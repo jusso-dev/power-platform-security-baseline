@@ -8,7 +8,7 @@ import sys
 from typing import Sequence
 
 from pp_assessor.auth import MsalAppOnlyTokenProvider, MsalDelegatedTokenProvider
-from pp_assessor.checks import register_tenant_checks
+from pp_assessor.checks import register_environment_checks, register_tenant_checks
 from pp_assessor.engine import (
     CheckRegistry,
     FixtureDataProvider,
@@ -77,6 +77,7 @@ def default_registry() -> CheckRegistry:
     """Return a CheckRegistry populated with all implemented read-only checks."""
     registry = CheckRegistry()
     register_tenant_checks(registry)
+    register_environment_checks(registry)
     return registry
 
 

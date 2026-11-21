@@ -248,6 +248,60 @@ def build_manual_result(
     )
 
 
+class CachingDataProvider:
+    """Per-run read-only cache avoiding duplicate API calls across multiple checks."""
+
+    def __init__(self, inner: ReadOnlyDataProvider) -> None:
+        self._inner = inner
+        self.tenant_id = inner.tenant_id
+        self.mode = inner.mode
+        self._cache: dict[str, Any] = {}
+
+    def _cached(self, key: str, loader: Callable[[], Any]) -> Any:
+        if key not in self._cache:
+            self._cache[key] = loader()
+        return self._cache[key]
+
+    def get_tenant_settings(self) -> dict[str, Any]:
+        return self._cached("tenant_settings", self._inner.get_tenant_settings)
+
+    def get_tenant_isolation(self) -> dict[str, Any]:
+        return self._cached("tenant_isolation", self._inner.get_tenant_isolation)
+
+    def get_dlp_policies(self) -> list[dict[str, Any]]:
+        return self._cached("dlp_policies", self._inner.get_dlp_policies)
+
+    def get_environments(self) -> list[dict[str, Any]]:
+        return self._cached("environments", self._inner.get_environments)
+
+    def get_environment_groups(self) -> list[dict[str, Any]]:
+        return self._cached("environment_groups", self._inner.get_environment_groups)
+
+    def get_enterprise_policies(self) -> list[dict[str, Any]]:
+        return self._cached("enterprise_policies", self._inner.get_enterprise_policies)
+
+    def get_graph_authorization_policy(self) -> dict[str, Any]:
+        return self._cached("graph_authz", self._inner.get_graph_authorization_policy)
+
+    def get_privileged_role_assignments(self) -> list[dict[str, Any]]:
+        return self._cached("priv_roles", self._inner.get_privileged_role_assignments)
+
+    def get_self_service_purchase_policies(self) -> list[dict[str, Any]]:
+        return self._cached("self_service", self._inner.get_self_service_purchase_policies)
+
+    def get_dataverse_org_settings(self, environment_id: str, instance_url: str) -> dict[str, Any]:
+        return self._cached(
+            f"dv_org:{environment_id}",
+            lambda: self._inner.get_dataverse_org_settings(environment_id, instance_url),
+        )
+
+    def get_copilot_studio_bots(self, environment_id: str, instance_url: str) -> list[dict[str, Any]]:
+        return self._cached(
+            f"cs_bots:{environment_id}",
+            lambda: self._inner.get_copilot_studio_bots(environment_id, instance_url),
+        )
+
+
 def run_assessment(
     provider: ReadOnlyDataProvider,
     registry: CheckRegistry | None = None,
@@ -256,16 +310,17 @@ def run_assessment(
 ) -> AssessmentReport:
     """Execute registered checks across loaded baseline items and build a report."""
     active_registry = registry or CheckRegistry()
+    cached_provider = CachingDataProvider(provider)
     items = load_baseline_items(baseline_dir)
     if scopes:
         items = [item for item in items if item.scope in scopes]
 
-    report = AssessmentReport(tenant_id=provider.tenant_id, mode=provider.mode)
+    report = AssessmentReport(tenant_id=cached_provider.tenant_id, mode=cached_provider.mode)
 
     for item in items:
         if not item.automated or not item.assessor_check_id:
             report.findings.append(
-                build_manual_result(item, target_id=provider.tenant_id, target_name="Tenant")
+                build_manual_result(item, target_id=cached_provider.tenant_id, target_name="Tenant")
             )
             continue
 
@@ -274,7 +329,7 @@ def run_assessment(
             report.findings.append(
                 build_manual_result(
                     item,
-                    target_id=provider.tenant_id,
+                    target_id=cached_provider.tenant_id,
                     target_name="Tenant",
                     reason=(
                         f"Automated check '{item.assessor_check_id}' is not registered yet; "
@@ -285,7 +340,7 @@ def run_assessment(
             continue
 
         try:
-            results = check_fn(item, provider)
+            results = check_fn(item, cached_provider)
             report.findings.extend(results)
         except Exception as exc:
             report.findings.append(
@@ -297,7 +352,7 @@ def run_assessment(
                     workload=item.workload,
                     severity=item.severity,
                     status=CheckStatus.ERROR,
-                    target_id=provider.tenant_id,
+                    target_id=cached_provider.tenant_id,
                     target_name="Tenant",
                     details=f"Check raised an error: {exc}",
                     recommended_value=item.recommended_value,

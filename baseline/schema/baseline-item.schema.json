@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jusso-dev/power-platform-security-baseline/baseline/schema/baseline-item.schema.json",
+  "title": "Power Platform Security Baseline Item",
+  "description": "YAML front matter schema for ASD Blueprint-style Power Platform and Copilot Studio security baseline items.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "title",
+    "scope",
+    "workload",
+    "severity",
+    "recommended_value",
+    "rationale",
+    "ism_controls",
+    "essential_eight",
+    "configure_summary",
+    "verify_summary",
+    "assessor_check_id",
+    "automated",
+    "references",
+    "last_verified"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^PP-(TEN|ENV|CS)-[0-9]{3}$",
+      "description": "Unique baseline item identifier (PP-TEN-###, PP-ENV-###, or PP-CS-###)."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 140,
+      "description": "Short descriptive title of the security setting."
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["tenant", "environment"],
+      "description": "Whether the setting applies at the tenant level or per environment."
+    },
+    "workload": {
+      "type": "string",
+      "enum": [
+        "power-platform",
+        "dataverse",
+        "power-apps",
+        "power-automate",
+        "copilot-studio"
+      ],
+      "description": "Primary Microsoft Power Platform workload covered by this setting."
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["critical", "high", "medium", "low"],
+      "description": "Security impact severity if the setting is non-compliant."
+    },
+    "recommended_value": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Concise statement of the required or recommended setting value."
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 15,
+      "description": "Summary of why this setting reduces security risk."
+    },
+    "ism_controls": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^ISM-[0-9]{4}$"
+      },
+      "description": "Relevant Australian Signals Directorate Information Security Manual (ISM) control identifiers."
+    },
+    "essential_eight": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "Application control",
+          "Patch applications",
+          "Configure Microsoft Office macro settings",
+          "User application hardening",
+          "Restrict administrative privileges",
+          "Patch operating systems",
+          "Multi-factor authentication",
+          "Regular backups"
+        ]
+      },
+      "description": "Applicable Essential Eight mitigation strategies, or an empty list if none apply directly."
+    },
+    "configure_summary": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Brief summary of where and how the setting is configured."
+    },
+    "verify_summary": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Brief summary of how compliance is verified via API or manual inspection."
+    },
+    "assessor_check_id": {
+      "type": ["string", "null"],
+      "pattern": "^pp_(ten|env|cs)_[a-z0-9_]+$",
+      "description": "Identifier of the corresponding read-only assessor check, or null if manual only."
+    },
+    "automated": {
+      "type": "boolean",
+      "description": "True if the read-only assessor can evaluate this item automatically via a supported API; false for manual verification."
+    },
+    "sentinel_rules": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 3
+      },
+      "description": "Optional list of related Microsoft Sentinel analytics rules or hunting queries."
+    },
+    "references": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "url"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 3
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://"
+          }
+        }
+      },
+      "description": "Official Microsoft Learn, Azure-Sentinel or cyber.gov.au references supporting the item."
+    },
+    "last_verified": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "ISO 8601 date (YYYY-MM-DD) when the setting and links were last verified."
+    }
+  }
+}

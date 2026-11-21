@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pp-assessor"
+version = "0.1.0"
+description = "Read-only security baseline assessor for Microsoft Power Platform and Copilot Studio."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+live = [
+    "msal>=1.28.0",
+]
+dev = [
+    "pytest>=8.0",
+    "jsonschema>=4.20",
+]
+
+[project.scripts]
+pp-assessor = "pp_assessor.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,74 @@
+# Power Platform Security Baseline Assessor
+
+A cross-platform, strictly **read-only** Python CLI that evaluates Microsoft Power Platform, Dataverse and Copilot Studio tenant and environment settings against the security baseline in `baseline/`.
+
+See [ADR 0001](../docs/adr/0001-assessor-language-and-auth.md) for the language, authentication and read-only design rationale.
+
+## Read-only guarantee
+
+The assessor never creates, updates or deletes any tenant or environment setting:
+
+- `ReadOnlyHttpClient` enforces HTTP `GET` only and raises `ReadOnlyViolationError` for any other verb.
+- Authentication helpers reject any write or `.ReadWrite.` Microsoft Graph scope.
+- `assessor/tests/test_read_only_guard.py` runs both runtime and static AST checks in CI to fail if any write verb is introduced in `assessor/src/`.
+
+## Installation
+
+```bash
+# Offline / fixture mode and development
+pip install -e "assessor[dev]"
+
+# Live read-only tenant assessment (adds MSAL for Microsoft Entra ID auth)
+pip install -e "assessor[live]"
+```
+
+## Quick start (offline fixture mode)
+
+Run against a JSON fixture without connecting to any real tenant:
+
+```bash
+pp-assessor assess \
+  --fixture assessor/tests/fixtures/minimal_tenant.json \
+  --format all \
+  --output ./assessment-out
+```
+
+Supported `--format` values:
+
+- `json`: machine-readable findings and summary counts
+- `csv`: flat tabular export for spreadsheets and compliance evidence
+- `markdown`: human-readable report in ASD Blueprint style
+- `all`: writes `report.json`, `report.csv` and `report.md` into the `--output` directory
+
+## Live read-only authentication modes
+
+### Delegated (device code)
+
+```bash
+pp-assessor assess \
+  --auth delegated \
+  --tenant-id 00000000-0000-0000-0000-000000000000 \
+  --client-id 00000000-0000-0000-0000-000000000000 \
+  --format markdown \
+  --output report.md
+```
+
+### App-only (service principal)
+
+Set `PP_ASSESSOR_CLIENT_SECRET` (or configure certificate credentials) in the environment rather than passing secrets on the command line:
+
+```bash
+export PP_ASSESSOR_CLIENT_SECRET="<secret-from-vault>"
+pp-assessor assess \
+  --auth app-only \
+  --tenant-id 00000000-0000-0000-0000-000000000000 \
+  --client-id 00000000-0000-0000-0000-000000000000 \
+  --format json \
+  --output report.json
+```
+
+## Running tests
+
+```bash
+pytest assessor/tests
+```

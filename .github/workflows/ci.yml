@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  style:
+    name: Style and banned characters
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run style check
+        run: python3 scripts/check_style.py
+
+  markdownlint:
+    name: Markdown lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run markdownlint-cli2
+        uses: DavidAnson/markdownlint-cli2-action@v19
+
+  links:
+    name: Link check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check links with lychee
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --verbose --no-progress --config .lychee.toml .
+          fail: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  validate:
+    name: Schema, Sentinel and Assessor validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate baseline items (when present)
+        run: |
+          if [ -f scripts/validate_baseline.py ]; then
+            pip install -q jsonschema pyyaml
+            python3 scripts/validate_baseline.py
+          else
+            echo "Baseline validator not yet present; skipping."
+          fi
+
+      - name: Validate Sentinel content (when present)
+        run: |
+          if [ -f scripts/validate_sentinel.py ]; then
+            pip install -q jsonschema pyyaml
+            python3 scripts/validate_sentinel.py
+          else
+            echo "Sentinel validator not yet present; skipping."
+          fi
+
+      - name: Run assessor tests (when present)
+        run: |
+          if [ -f assessor/pyproject.toml ]; then
+            pip install -q -e "assessor[dev]"
+            pytest assessor/tests
+          else
+            echo "Assessor not yet present; skipping."
+          fi

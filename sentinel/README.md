@@ -47,6 +47,14 @@ Enable Microsoft's out-of-the-box rules in the [Microsoft Business Applications 
 
 - Four least-privilege, Managed Identity Logic Apps playbooks (notify admin team, disable risky flow, quarantine canvas app, remove user from environment security group and revoke sessions) with Deploy to Azure buttons live in [sentinel/playbooks/](playbooks/README.md).
 
+## One-step deployment
+
+Deploy all 12 custom scheduled analytics rules and the Power Platform Security Posture workbook into your Microsoft Sentinel workspace in one step:
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fjusso-dev%2Fpower-platform-security-baseline%2Fmain%2Fsentinel%2Farm%2Fall-in-one-sentinel-deployment.json)
+
+Template file: [sentinel/arm/all-in-one-sentinel-deployment.json](arm/all-in-one-sentinel-deployment.json).
+
 ## Validation and tests
 
 - Run `python3 scripts/validate_sentinel.py` to validate YAML rules against Microsoft Sentinel content schemas, check ARM JSON templates, block retired table names and verify every rule has a KQL datatable test.

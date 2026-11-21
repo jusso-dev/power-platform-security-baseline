@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release artefacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install validation, test and packaging dependencies
+        run: |
+          pip install -q build jsonschema pyyaml pytest
+          pip install -q -e "assessor[dev]"
+
+      - name: Run style, schema, Sentinel and assessor checks
+        run: |
+          python3 scripts/check_style.py
+          python3 scripts/validate_baseline.py
+          python3 scripts/validate_sentinel.py
+          pytest assessor/tests
+
+      - name: Build release artefacts
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          python3 scripts/package_release.py --version "$VERSION" --out-dir dist
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes

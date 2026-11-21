@@ -1,0 +1,87 @@
+id: 9f4d7b2a-1c3e-4a8b-9d21-6e8f0a4b1c05
+name: Power Platform - High-risk connector added to a sensitive environment
+description: |
+  Detects creation of a high-risk external, file-transfer, consumer or raw HTTP connection (PutConnection) inside a designated sensitive Power Platform environment.
+  Enhances the Low-severity out-of-the-box rule 'Power Platform - Connector added to a sensitive environment' by explicitly flagging high-risk exfiltration connectors at High severity.
+  Maps to ASD ISM controls ISM-0263 and ISM-1585.
+severity: High
+status: Available
+requiredDataConnectors:
+  - connectorId: PowerPlatformAdmin
+    dataTypes:
+      - PowerPlatformAdminActivity
+queryFrequency: 1h
+queryPeriod: 1h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - Execution
+  - Exfiltration
+relevantTechniques:
+  - T1059
+  - T1567
+query: |
+  // Replace with your sensitive production environment GUIDs (or read from a Sentinel watchlist)
+  let sensitive_environments = dynamic([
+      "00000000-0000-0000-0000-000000000201"
+  ]);
+  let high_risk_connectors = dynamic([
+      "shared_http",
+      "shared_webcontents",
+      "shared_ftp",
+      "shared_sftpwithssh",
+      "shared_gmail",
+      "shared_outlook",
+      "shared_dropbox",
+      "shared_googledrive",
+      "shared_box",
+      "shared_slack"
+  ]);
+  PowerPlatformAdminActivity
+  | where TimeGenerated > ago(1h)
+  | where EventOriginalType == "PutConnection"
+  | mv-expand PropertyCollection
+  | extend
+      PropName = tostring(PropertyCollection.Name),
+      PropValue = tostring(PropertyCollection.Value)
+  | summarize Props = make_bag(bag_pack(PropName, PropValue))
+      by TimeGenerated, EventOriginalUid, ActorName
+  | extend
+      EnvironmentId = tostring(Props["powerplatform.analytics.resource.environment.id"]),
+      ConnectorId = tolower(tostring(Props["powerplatform.analytics.resource.connector.id"])),
+      ConnectionId = tostring(Props["powerplatform.analytics.resource.connection.id"]),
+      SrcIpAddr = tostring(Props["enduser.ip_address"])
+  | where EnvironmentId in~ (sensitive_environments)
+  | where ConnectorId has_any (high_risk_connectors)
+  | extend
+      AccountName = tostring(split(ActorName, "@")[0]),
+      UPNSuffix = tostring(split(ActorName, "@")[1]),
+      ISMControls = "ISM-0263, ISM-1585"
+  | project
+      TimeGenerated,
+      ActorName,
+      AccountName,
+      UPNSuffix,
+      SrcIpAddr,
+      EnvironmentId,
+      ConnectorId,
+      ConnectionId,
+      ISMControls
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountName
+      - identifier: UPNSuffix
+        columnName: UPNSuffix
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: SrcIpAddr
+customDetails:
+  EnvironmentId: EnvironmentId
+  ConnectorId: ConnectorId
+  ConnectionId: ConnectionId
+  ISMControls: ISMControls
+version: 1.0.0
+kind: Scheduled

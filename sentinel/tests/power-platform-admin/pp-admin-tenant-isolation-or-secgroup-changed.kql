@@ -1,0 +1,48 @@
+// Synthetic KQL datatable test for: pp-admin-tenant-isolation-or-secgroup-changed.yaml
+// Expected result: 2 rows (tenant isolation disabled, and SecurityGroupId changed); benign enabled event filtered out.
+let PowerPlatformAdminActivity = datatable(
+    TimeGenerated: datetime,
+    EventOriginalUid: string,
+    EventOriginalType: string,
+    ActorName: string,
+    PropertyCollection: dynamic
+) [
+    // Positive case 1: Tenant isolation turned off
+    ago(10m), "00000000-0000-0000-0000-000000000911", "TenantIsolationOperation", "compromised-admin@yourdomain.gov.au",
+    dynamic([
+        {"Name": "powerplatform.analytics.resource.tenant.isolation_policy.enabled", "Value": "False"},
+        {"Name": "enduser.ip_address", "Value": "203.0.113.20"}
+    ]),
+    // Positive case 2: Security group changed on environment
+    ago(12m), "00000000-0000-0000-0000-000000000912", "EnvironmentPropertyChange", "compromised-admin@yourdomain.gov.au",
+    dynamic([
+        {"Name": "Property: SecurityGroupId", "Value": "00000000-0000-0000-0000-000000000000"},
+        {"Name": "powerplatform.analytics.resource.environment.id", "Value": "00000000-0000-0000-0000-000000000201"},
+        {"Name": "powerplatform.analytics.resource.environment.url", "Value": "https://org0001.crm6.dynamics.com"},
+        {"Name": "enduser.ip_address", "Value": "203.0.113.20"}
+    ]),
+    // Negative case: Tenant isolation enabled
+    ago(20m), "00000000-0000-0000-0000-000000000913", "TenantIsolationOperation", "pp-admin1@yourdomain.gov.au",
+    dynamic([
+        {"Name": "powerplatform.analytics.resource.tenant.isolation_policy.enabled", "Value": "True"},
+        {"Name": "enduser.ip_address", "Value": "198.51.100.5"}
+    ])
+];
+PowerPlatformAdminActivity
+| where TimeGenerated > ago(1h)
+| where (EventOriginalType == "TenantIsolationOperation"
+         and PropertyCollection has "powerplatform.analytics.resource.tenant.isolation_policy.enabled")
+     or (EventOriginalType == "EnvironmentPropertyChange"
+         and PropertyCollection has "SecurityGroupId")
+| mv-expand PropertyCollection
+| extend
+    PropName = tostring(PropertyCollection.Name),
+    PropValue = tostring(PropertyCollection.Value)
+| summarize Props = make_bag(bag_pack(PropName, PropValue))
+    by TimeGenerated, EventOriginalUid, EventOriginalType, ActorName
+| extend
+    IsolationEnabled = tostring(Props["powerplatform.analytics.resource.tenant.isolation_policy.enabled"]),
+    EnvironmentId = tostring(Props["powerplatform.analytics.resource.environment.id"]),
+    EnvironmentUrl = tostring(Props["powerplatform.analytics.resource.environment.url"])
+| where EventOriginalType == "EnvironmentPropertyChange" or IsolationEnabled =~ "False"
+| project TimeGenerated, ActorName, EventOriginalType, IsolationEnabled, EnvironmentId, EnvironmentUrl

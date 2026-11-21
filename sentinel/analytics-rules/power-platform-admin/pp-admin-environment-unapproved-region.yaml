@@ -1,0 +1,83 @@
+id: 9f4d7b2a-1c3e-4a8b-9d21-6e8f0a4b1c03
+name: Power Platform - Environment created or moved outside approved regions
+description: |
+  Detects Power Platform environment provisioning, copy or move operations targeting a geography outside the organisation's approved data residency list (default: Australia).
+  No out-of-the-box Business Applications rule monitors environment geography or lifecycle operations.
+  Note: Validate exact raw EventOriginalType lifecycle strings in your tenant via a 30-day summary query before tuning.
+  Maps to ASD ISM controls ISM-1585 and ISM-0407.
+severity: Medium
+status: Available
+requiredDataConnectors:
+  - connectorId: PowerPlatformAdmin
+    dataTypes:
+      - PowerPlatformAdminActivity
+queryFrequency: 1h
+queryPeriod: 1h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - Persistence
+  - Exfiltration
+relevantTechniques:
+  - T1578.002
+  - T1537
+query: |
+  // Adjust approved_regions to match organisational data sovereignty requirements
+  let approved_regions = dynamic(["australia", "australiaeast", "australiasoutheast"]);
+  let excluded_ops = dynamic([
+      "EnvironmentPropertyChange",
+      "EnvironmentAddedToEnvironmentGroup",
+      "EnvironmentRemovedFromEnvironmentGroup"
+  ]);
+  PowerPlatformAdminActivity
+  | where TimeGenerated > ago(1h)
+  | where EventOriginalType has "Environment"
+  | where EventOriginalType !in (excluded_ops)
+  | mv-expand PropertyCollection
+  | extend
+      PropName = tostring(PropertyCollection.Name),
+      PropValue = tostring(PropertyCollection.Value)
+  | summarize Props = make_bag(bag_pack(PropName, PropValue))
+      by TimeGenerated, EventOriginalUid, EventOriginalType, ActorName
+  | extend
+      EnvironmentId = tostring(Props["powerplatform.analytics.resource.environment.id"]),
+      EnvironmentUrl = tostring(Props["powerplatform.analytics.resource.environment.url"]),
+      Location = tolower(coalesce(
+          tostring(Props["powerplatform.analytics.resource.environment.location"]),
+          tostring(Props["location"]),
+          "unknown"
+      )),
+      SrcIpAddr = tostring(Props["enduser.ip_address"]),
+      AccountName = tostring(split(ActorName, "@")[0]),
+      UPNSuffix = tostring(split(ActorName, "@")[1]),
+      ISMControls = "ISM-1585, ISM-0407"
+  | where Location !in (approved_regions)
+  | project
+      TimeGenerated,
+      ActorName,
+      AccountName,
+      UPNSuffix,
+      SrcIpAddr,
+      EventOriginalType,
+      EnvironmentId,
+      EnvironmentUrl,
+      Location,
+      ISMControls
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountName
+      - identifier: UPNSuffix
+        columnName: UPNSuffix
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: SrcIpAddr
+customDetails:
+  EventOriginalType: EventOriginalType
+  EnvironmentId: EnvironmentId
+  Location: Location
+  ISMControls: ISMControls
+version: 1.0.0
+kind: Scheduled

@@ -1,0 +1,72 @@
+id: 9f4d7b2a-1c3e-4a8b-9d21-6e8f0a4b1c02
+name: Power Platform - Tenant isolation disabled or environment security group modified
+description: |
+  Alerts immediately when Power Platform tenant isolation is turned off or an environment's Microsoft Entra security group binding is changed.
+  Closes a gap in the out-of-the-box rule 'Dataverse - Guest user exfiltration following Power Platform defense impairment', which only triggers after exfiltration alerts follow.
+  Maps to ASD ISM controls ISM-0263, ISM-0407 and ISM-1585.
+severity: High
+status: Available
+requiredDataConnectors:
+  - connectorId: PowerPlatformAdmin
+    dataTypes:
+      - PowerPlatformAdminActivity
+queryFrequency: 1h
+queryPeriod: 1h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - DefenseEvasion
+relevantTechniques:
+  - T1562.001
+query: |
+  PowerPlatformAdminActivity
+  | where TimeGenerated > ago(1h)
+  | where (EventOriginalType == "TenantIsolationOperation"
+           and PropertyCollection has "powerplatform.analytics.resource.tenant.isolation_policy.enabled")
+       or (EventOriginalType == "EnvironmentPropertyChange"
+           and PropertyCollection has "SecurityGroupId")
+  | mv-expand PropertyCollection
+  | extend
+      PropName = tostring(PropertyCollection.Name),
+      PropValue = tostring(PropertyCollection.Value)
+  | summarize Props = make_bag(bag_pack(PropName, PropValue))
+      by TimeGenerated, EventOriginalUid, EventOriginalType, ActorName
+  | extend
+      IsolationEnabled = tostring(Props["powerplatform.analytics.resource.tenant.isolation_policy.enabled"]),
+      EnvironmentId = tostring(Props["powerplatform.analytics.resource.environment.id"]),
+      EnvironmentUrl = tostring(Props["powerplatform.analytics.resource.environment.url"]),
+      SrcIpAddr = tostring(Props["enduser.ip_address"]),
+      AccountName = tostring(split(ActorName, "@")[0]),
+      UPNSuffix = tostring(split(ActorName, "@")[1]),
+      ISMControls = "ISM-0263, ISM-0407, ISM-1585"
+  | where EventOriginalType == "EnvironmentPropertyChange" or IsolationEnabled =~ "False"
+  | project
+      TimeGenerated,
+      ActorName,
+      AccountName,
+      UPNSuffix,
+      SrcIpAddr,
+      EventOriginalType,
+      IsolationEnabled,
+      EnvironmentId,
+      EnvironmentUrl,
+      ISMControls
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountName
+      - identifier: UPNSuffix
+        columnName: UPNSuffix
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: SrcIpAddr
+customDetails:
+  EventOriginalType: EventOriginalType
+  IsolationEnabled: IsolationEnabled
+  EnvironmentId: EnvironmentId
+  EnvironmentUrl: EnvironmentUrl
+  ISMControls: ISMControls
+version: 1.0.0
+kind: Scheduled

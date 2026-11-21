@@ -1,0 +1,344 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "Microsoft Sentinel scheduled analytics rules for power-platform-admin.",
+    "author": "power-platform-security-baseline"
+  },
+  "parameters": {
+    "workspaceName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the Microsoft Sentinel Log Analytics workspace."
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2023-11-01",
+      "name": "[concat(parameters('workspaceName'), '/Microsoft.SecurityInsights/9f4d7b2a-1c3e-4a8b-9d21-6e8f0a4b1c01')]",
+      "kind": "Scheduled",
+      "properties": {
+        "displayName": "Power Platform - DLP policy created, updated or removed by non-approved admin",
+        "description": "Detects Power Platform Data Loss Prevention (DLP) policy creation, modification or deletion performed by an account outside the approved Power Platform administrator list.\nCloses a gap in the out-of-the-box rule 'Power Platform - DLP policy updated or removed', which ignores CreateDlpPolicy, suppresses edits within 10 minutes of creation, and does not enforce an approved administrator allow-list.\nMaps to ASD ISM controls ISM-0263, ISM-0580 and ISM-1585.",
+        "severity": "High",
+        "enabled": true,
+        "query": "// Replace with your PIM-eligible Power Platform administrator UPNs or a Sentinel watchlist\nlet approved_admins = dynamic([\n    \"pp-admin1@yourdomain.gov.au\",\n    \"pp-admin2@yourdomain.gov.au\"\n]);\nPowerPlatformAdminActivity\n| where TimeGenerated > ago(1h)\n| where EventOriginalType == \"GovernanceApiPolicyOperation\"\n| mv-expand PropertyCollection\n| extend\n    PropName = tostring(PropertyCollection.Name),\n    PropValue = tostring(PropertyCollection.Value)\n| summarize Props = make_bag(bag_pack(PropName, PropValue))\n    by TimeGenerated, EventOriginalUid, ActorName\n| extend\n    Operation = tostring(Props[\"powerplatform.analytics.resource.tenant.governance.api_policy.operation_name\"]),\n    PolicyName = tostring(Props[\"powerplatform.analytics.resource.display_name\"]),\n    PolicyId = tostring(Props[\"powerplatform.analytics.resource.id\"]),\n    ActorUpn = coalesce(tostring(Props[\"enduser.principal_name\"]), ActorName),\n    SrcIpAddr = tostring(Props[\"enduser.ip_address\"])\n| where Operation in (\"CreateDlpPolicy\", \"UpdateDlpPolicy\", \"DeleteDlpPolicy\")\n| where ActorUpn !in~ (approved_admins)\n| extend\n    AccountName = tostring(split(ActorUpn, \"@\")[0]),\n    UPNSuffix = tostring(split(ActorUpn, \"@\")[1]),\n    CalculatedSeverity = iif(Operation == \"DeleteDlpPolicy\", \"High\", \"Medium\"),\n    ISMControls = \"ISM-0263, ISM-0580, ISM-1585\"\n| project\n    TimeGenerated,\n    ActorUpn,\n    AccountName,\n    UPNSuffix,\n    SrcIpAddr,\n    Operation,\n    PolicyName,\n    PolicyId,\n    CalculatedSeverity,\n    ISMControls",
+        "queryFrequency": "PT1H",
+        "queryPeriod": "PT1H",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT5H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "DefenseEvasion"
+        ],
+        "techniques": [
+          "T1562.001"
+        ],
+        "entityMappings": [
+          {
+            "entityType": "Account",
+            "fieldMappings": [
+              {
+                "identifier": "Name",
+                "columnName": "AccountName"
+              },
+              {
+                "identifier": "UPNSuffix",
+                "columnName": "UPNSuffix"
+              }
+            ]
+          },
+          {
+            "entityType": "IP",
+            "fieldMappings": [
+              {
+                "identifier": "Address",
+                "columnName": "SrcIpAddr"
+              }
+            ]
+          }
+        ],
+        "incidentConfiguration": {
+          "createIncident": true,
+          "groupingConfiguration": {
+            "enabled": false,
+            "reopenClosedIncident": false,
+            "lookbackDuration": "PT5H",
+            "matchingMethod": "AllEntities"
+          }
+        },
+        "customDetails": {
+          "Operation": "Operation",
+          "PolicyName": "PolicyName",
+          "PolicyId": "PolicyId",
+          "ISMControls": "ISMControls"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2023-11-01",
+      "name": "[concat(parameters('workspaceName'), '/Microsoft.SecurityInsights/9f4d7b2a-1c3e-4a8b-9d21-6e8f0a4b1c03')]",
+      "kind": "Scheduled",
+      "properties": {
+        "displayName": "Power Platform - Environment created or moved outside approved regions",
+        "description": "Detects Power Platform environment provisioning, copy or move operations targeting a geography outside the organisation's approved data residency list (default: Australia).\nNo out-of-the-box Business Applications rule monitors environment geography or lifecycle operations.\nNote: Validate exact raw EventOriginalType lifecycle strings in your tenant via a 30-day summary query before tuning.\nMaps to ASD ISM controls ISM-1585 and ISM-0407.",
+        "severity": "Medium",
+        "enabled": true,
+        "query": "// Adjust approved_regions to match organisational data sovereignty requirements\nlet approved_regions = dynamic([\"australia\", \"australiaeast\", \"australiasoutheast\"]);\nlet excluded_ops = dynamic([\n    \"EnvironmentPropertyChange\",\n    \"EnvironmentAddedToEnvironmentGroup\",\n    \"EnvironmentRemovedFromEnvironmentGroup\"\n]);\nPowerPlatformAdminActivity\n| where TimeGenerated > ago(1h)\n| where EventOriginalType has \"Environment\"\n| where EventOriginalType !in (excluded_ops)\n| mv-expand PropertyCollection\n| extend\n    PropName = tostring(PropertyCollection.Name),\n    PropValue = tostring(PropertyCollection.Value)\n| summarize Props = make_bag(bag_pack(PropName, PropValue))\n    by TimeGenerated, EventOriginalUid, EventOriginalType, ActorName\n| extend\n    EnvironmentId = tostring(Props[\"powerplatform.analytics.resource.environment.id\"]),\n    EnvironmentUrl = tostring(Props[\"powerplatform.analytics.resource.environment.url\"]),\n    Location = tolower(coalesce(\n        tostring(Props[\"powerplatform.analytics.resource.environment.location\"]),\n        tostring(Props[\"location\"]),\n        \"unknown\"\n    )),\n    SrcIpAddr = tostring(Props[\"enduser.ip_address\"]),\n    AccountName = tostring(split(ActorName, \"@\")[0]),\n    UPNSuffix = tostring(split(ActorName, \"@\")[1]),\n    ISMControls = \"ISM-1585, ISM-0407\"\n| where Location !in (approved_regions)\n| project\n    TimeGenerated,\n    ActorName,\n    AccountName,\n    UPNSuffix,\n    SrcIpAddr,\n    EventOriginalType,\n    EnvironmentId,\n    EnvironmentUrl,\n    Location,\n    ISMControls",
+        "queryFrequency": "PT1H",
+        "queryPeriod": "PT1H",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT5H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "Persistence",
+          "Exfiltration"
+        ],
+        "techniques": [
+          "T1578.002",
+          "T1537"
+        ],
+        "entityMappings": [
+          {
+            "entityType": "Account",
+            "fieldMappings": [
+              {
+                "identifier": "Name",
+                "columnName": "AccountName"
+              },
+              {
+                "identifier": "UPNSuffix",
+                "columnName": "UPNSuffix"
+              }
+            ]
+          },
+          {
+            "entityType": "IP",
+            "fieldMappings": [
+              {
+                "identifier": "Address",
+                "columnName": "SrcIpAddr"
+              }
+            ]
+          }
+        ],
+        "incidentConfiguration": {
+          "createIncident": true,
+          "groupingConfiguration": {
+            "enabled": false,
+            "reopenClosedIncident": false,
+            "lookbackDuration": "PT5H",
+            "matchingMethod": "AllEntities"
+          }
+        },
+        "customDetails": {
+          "EventOriginalType": "EventOriginalType",
+          "EnvironmentId": "EnvironmentId",
+          "Location": "Location",
+          "ISMControls": "ISMControls"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2023-11-01",
+      "name": "[concat(parameters('workspaceName'), '/Microsoft.SecurityInsights/9f4d7b2a-1c3e-4a8b-9d21-6e8f0a4b1c04')]",
+      "kind": "Scheduled",
+      "properties": {
+        "displayName": "Power Platform - Admin self-elevation or Dataverse System Administrator granted",
+        "description": "Detects a tenant administrator applying the System Administrator role to themselves inside an environment (ApplyAdminRole) or a Dataverse System Administrator role being associated with a user.\nComplements the out-of-the-box rule 'Power Platform - Account added to privileged Microsoft Entra roles', which covers Entra directory roles only.\nMaps to ASD ISM controls ISM-0445, ISM-1175 and ISM-1228.",
+        "severity": "High",
+        "enabled": true,
+        "query": "// Populate with per-environment System Administrator role GUIDs from a Sentinel watchlist\nlet sysadmin_role_ids = dynamic([\n    \"00000000-0000-0000-0000-000000000101\"\n]);\nunion isfuzzy=true\n(\n    PowerPlatformAdminActivity\n    | where TimeGenerated > ago(1h)\n    | where EventOriginalType == \"ApplyAdminRole\"\n    | extend Properties = tostring(PropertyCollection)\n    | extend\n        Environment = extract(@'\"powerplatform.analytics.resource.environment.id\",\"Value\":\"([^\"]+)\"', 1, Properties),\n        SrcIpAddr = extract(@'\"enduser.ip_address\",\"Value\":\"([^\"]+)\"', 1, Properties)\n    | project\n        TimeGenerated,\n        Actor = ActorName,\n        SrcIpAddr,\n        Action = \"Tenant admin self-elevated via ApplyAdminRole\",\n        Environment,\n        Target = ActorName\n),\n(\n    DataverseActivity\n    | where TimeGenerated > ago(1h)\n    | where Message == \"Associate\" and EntityName == \"systemuser\"\n    | mv-expand Field = Fields\n    | where tostring(Field.Name) == \"role\" and tostring(Field.Value) in~ (sysadmin_role_ids)\n    | project\n        TimeGenerated,\n        Actor = UserId,\n        SrcIpAddr = ClientIp,\n        Action = \"Dataverse System Administrator role assigned\",\n        Environment = InstanceUrl,\n        Target = tostring(EntityId)\n)\n| extend\n    AccountName = tostring(split(Actor, \"@\")[0]),\n    UPNSuffix = tostring(split(Actor, \"@\")[1]),\n    ISMControls = \"ISM-0445, ISM-1175, ISM-1228\"\n| project\n    TimeGenerated,\n    Actor,\n    AccountName,\n    UPNSuffix,\n    SrcIpAddr,\n    Action,\n    Environment,\n    Target,\n    ISMControls",
+        "queryFrequency": "PT1H",
+        "queryPeriod": "PT1H",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT5H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "PrivilegeEscalation"
+        ],
+        "techniques": [
+          "T1098",
+          "T1078"
+        ],
+        "entityMappings": [
+          {
+            "entityType": "Account",
+            "fieldMappings": [
+              {
+                "identifier": "Name",
+                "columnName": "AccountName"
+              },
+              {
+                "identifier": "UPNSuffix",
+                "columnName": "UPNSuffix"
+              }
+            ]
+          },
+          {
+            "entityType": "IP",
+            "fieldMappings": [
+              {
+                "identifier": "Address",
+                "columnName": "SrcIpAddr"
+              }
+            ]
+          }
+        ],
+        "incidentConfiguration": {
+          "createIncident": true,
+          "groupingConfiguration": {
+            "enabled": false,
+            "reopenClosedIncident": false,
+            "lookbackDuration": "PT5H",
+            "matchingMethod": "AllEntities"
+          }
+        },
+        "customDetails": {
+          "Action": "Action",
+          "Environment": "Environment",
+          "Target": "Target",
+          "ISMControls": "ISMControls"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2023-11-01",
+      "name": "[concat(parameters('workspaceName'), '/Microsoft.SecurityInsights/9f4d7b2a-1c3e-4a8b-9d21-6e8f0a4b1c05')]",
+      "kind": "Scheduled",
+      "properties": {
+        "displayName": "Power Platform - High-risk connector added to a sensitive environment",
+        "description": "Detects creation of a high-risk external, file-transfer, consumer or raw HTTP connection (PutConnection) inside a designated sensitive Power Platform environment.\nEnhances the Low-severity out-of-the-box rule 'Power Platform - Connector added to a sensitive environment' by explicitly flagging high-risk exfiltration connectors at High severity.\nMaps to ASD ISM controls ISM-0263 and ISM-1585.",
+        "severity": "High",
+        "enabled": true,
+        "query": "// Replace with your sensitive production environment GUIDs (or read from a Sentinel watchlist)\nlet sensitive_environments = dynamic([\n    \"00000000-0000-0000-0000-000000000201\"\n]);\nlet high_risk_connectors = dynamic([\n    \"shared_http\",\n    \"shared_webcontents\",\n    \"shared_ftp\",\n    \"shared_sftpwithssh\",\n    \"shared_gmail\",\n    \"shared_outlook\",\n    \"shared_dropbox\",\n    \"shared_googledrive\",\n    \"shared_box\",\n    \"shared_slack\"\n]);\nPowerPlatformAdminActivity\n| where TimeGenerated > ago(1h)\n| where EventOriginalType == \"PutConnection\"\n| mv-expand PropertyCollection\n| extend\n    PropName = tostring(PropertyCollection.Name),\n    PropValue = tostring(PropertyCollection.Value)\n| summarize Props = make_bag(bag_pack(PropName, PropValue))\n    by TimeGenerated, EventOriginalUid, ActorName\n| extend\n    EnvironmentId = tostring(Props[\"powerplatform.analytics.resource.environment.id\"]),\n    ConnectorId = tolower(tostring(Props[\"powerplatform.analytics.resource.connector.id\"])),\n    ConnectionId = tostring(Props[\"powerplatform.analytics.resource.connection.id\"]),\n    SrcIpAddr = tostring(Props[\"enduser.ip_address\"])\n| where EnvironmentId in~ (sensitive_environments)\n| where ConnectorId has_any (high_risk_connectors)\n| extend\n    AccountName = tostring(split(ActorName, \"@\")[0]),\n    UPNSuffix = tostring(split(ActorName, \"@\")[1]),\n    ISMControls = \"ISM-0263, ISM-1585\"\n| project\n    TimeGenerated,\n    ActorName,\n    AccountName,\n    UPNSuffix,\n    SrcIpAddr,\n    EnvironmentId,\n    ConnectorId,\n    ConnectionId,\n    ISMControls",
+        "queryFrequency": "PT1H",
+        "queryPeriod": "PT1H",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT5H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "Execution",
+          "Exfiltration"
+        ],
+        "techniques": [
+          "T1059",
+          "T1567"
+        ],
+        "entityMappings": [
+          {
+            "entityType": "Account",
+            "fieldMappings": [
+              {
+                "identifier": "Name",
+                "columnName": "AccountName"
+              },
+              {
+                "identifier": "UPNSuffix",
+                "columnName": "UPNSuffix"
+              }
+            ]
+          },
+          {
+            "entityType": "IP",
+            "fieldMappings": [
+              {
+                "identifier": "Address",
+                "columnName": "SrcIpAddr"
+              }
+            ]
+          }
+        ],
+        "incidentConfiguration": {
+          "createIncident": true,
+          "groupingConfiguration": {
+            "enabled": false,
+            "reopenClosedIncident": false,
+            "lookbackDuration": "PT5H",
+            "matchingMethod": "AllEntities"
+          }
+        },
+        "customDetails": {
+          "EnvironmentId": "EnvironmentId",
+          "ConnectorId": "ConnectorId",
+          "ConnectionId": "ConnectionId",
+          "ISMControls": "ISMControls"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2023-11-01",
+      "name": "[concat(parameters('workspaceName'), '/Microsoft.SecurityInsights/9f4d7b2a-1c3e-4a8b-9d21-6e8f0a4b1c02')]",
+      "kind": "Scheduled",
+      "properties": {
+        "displayName": "Power Platform - Tenant isolation disabled or environment security group modified",
+        "description": "Alerts immediately when Power Platform tenant isolation is turned off or an environment's Microsoft Entra security group binding is changed.\nCloses a gap in the out-of-the-box rule 'Dataverse - Guest user exfiltration following Power Platform defense impairment', which only triggers after exfiltration alerts follow.\nMaps to ASD ISM controls ISM-0263, ISM-0407 and ISM-1585.",
+        "severity": "High",
+        "enabled": true,
+        "query": "PowerPlatformAdminActivity\n| where TimeGenerated > ago(1h)\n| where (EventOriginalType == \"TenantIsolationOperation\"\n         and PropertyCollection has \"powerplatform.analytics.resource.tenant.isolation_policy.enabled\")\n     or (EventOriginalType == \"EnvironmentPropertyChange\"\n         and PropertyCollection has \"SecurityGroupId\")\n| mv-expand PropertyCollection\n| extend\n    PropName = tostring(PropertyCollection.Name),\n    PropValue = tostring(PropertyCollection.Value)\n| summarize Props = make_bag(bag_pack(PropName, PropValue))\n    by TimeGenerated, EventOriginalUid, EventOriginalType, ActorName\n| extend\n    IsolationEnabled = tostring(Props[\"powerplatform.analytics.resource.tenant.isolation_policy.enabled\"]),\n    EnvironmentId = tostring(Props[\"powerplatform.analytics.resource.environment.id\"]),\n    EnvironmentUrl = tostring(Props[\"powerplatform.analytics.resource.environment.url\"]),\n    SrcIpAddr = tostring(Props[\"enduser.ip_address\"]),\n    AccountName = tostring(split(ActorName, \"@\")[0]),\n    UPNSuffix = tostring(split(ActorName, \"@\")[1]),\n    ISMControls = \"ISM-0263, ISM-0407, ISM-1585\"\n| where EventOriginalType == \"EnvironmentPropertyChange\" or IsolationEnabled =~ \"False\"\n| project\n    TimeGenerated,\n    ActorName,\n    AccountName,\n    UPNSuffix,\n    SrcIpAddr,\n    EventOriginalType,\n    IsolationEnabled,\n    EnvironmentId,\n    EnvironmentUrl,\n    ISMControls",
+        "queryFrequency": "PT1H",
+        "queryPeriod": "PT1H",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT5H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "DefenseEvasion"
+        ],
+        "techniques": [
+          "T1562.001"
+        ],
+        "entityMappings": [
+          {
+            "entityType": "Account",
+            "fieldMappings": [
+              {
+                "identifier": "Name",
+                "columnName": "AccountName"
+              },
+              {
+                "identifier": "UPNSuffix",
+                "columnName": "UPNSuffix"
+              }
+            ]
+          },
+          {
+            "entityType": "IP",
+            "fieldMappings": [
+              {
+                "identifier": "Address",
+                "columnName": "SrcIpAddr"
+              }
+            ]
+          }
+        ],
+        "incidentConfiguration": {
+          "createIncident": true,
+          "groupingConfiguration": {
+            "enabled": false,
+            "reopenClosedIncident": false,
+            "lookbackDuration": "PT5H",
+            "matchingMethod": "AllEntities"
+          }
+        },
+        "customDetails": {
+          "EventOriginalType": "EventOriginalType",
+          "IsolationEnabled": "IsolationEnabled",
+          "EnvironmentId": "EnvironmentId",
+          "EnvironmentUrl": "EnvironmentUrl",
+          "ISMControls": "ISMControls"
+        }
+      }
+    }
+  ]
+}

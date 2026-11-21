@@ -1,0 +1,47 @@
+// Synthetic KQL datatable test for: pp-admin-environment-unapproved-region.yaml
+// Expected result: 1 row (unitedstates environment creation); australia environment filtered out.
+let approved_regions = dynamic(["australia", "australiaeast", "australiasoutheast"]);
+let excluded_ops = dynamic([
+    "EnvironmentPropertyChange",
+    "EnvironmentAddedToEnvironmentGroup",
+    "EnvironmentRemovedFromEnvironmentGroup"
+]);
+let PowerPlatformAdminActivity = datatable(
+    TimeGenerated: datetime,
+    EventOriginalUid: string,
+    EventOriginalType: string,
+    ActorName: string,
+    PropertyCollection: dynamic
+) [
+    // Positive case: environment created in unitedstates
+    ago(10m), "00000000-0000-0000-0000-000000000921", "CreateEnvironment", "maker@yourdomain.gov.au",
+    dynamic([
+        {"Name": "powerplatform.analytics.resource.environment.id", "Value": "00000000-0000-0000-0000-000000000299"},
+        {"Name": "powerplatform.analytics.resource.environment.url", "Value": "https://org9999.crm.dynamics.com"},
+        {"Name": "powerplatform.analytics.resource.environment.location", "Value": "unitedstates"},
+        {"Name": "enduser.ip_address", "Value": "203.0.113.30"}
+    ]),
+    // Negative case: environment created in australia
+    ago(15m), "00000000-0000-0000-0000-000000000922", "CreateEnvironment", "pp-admin1@yourdomain.gov.au",
+    dynamic([
+        {"Name": "powerplatform.analytics.resource.environment.id", "Value": "00000000-0000-0000-0000-000000000202"},
+        {"Name": "powerplatform.analytics.resource.environment.url", "Value": "https://org0002.crm6.dynamics.com"},
+        {"Name": "powerplatform.analytics.resource.environment.location", "Value": "australia"},
+        {"Name": "enduser.ip_address", "Value": "198.51.100.5"}
+    ])
+];
+PowerPlatformAdminActivity
+| where TimeGenerated > ago(1h)
+| where EventOriginalType has "Environment"
+| where EventOriginalType !in (excluded_ops)
+| mv-expand PropertyCollection
+| extend
+    PropName = tostring(PropertyCollection.Name),
+    PropValue = tostring(PropertyCollection.Value)
+| summarize Props = make_bag(bag_pack(PropName, PropValue))
+    by TimeGenerated, EventOriginalUid, EventOriginalType, ActorName
+| extend
+    EnvironmentId = tostring(Props["powerplatform.analytics.resource.environment.id"]),
+    Location = tolower(tostring(Props["powerplatform.analytics.resource.environment.location"]))
+| where Location !in (approved_regions)
+| project TimeGenerated, ActorName, EventOriginalType, EnvironmentId, Location

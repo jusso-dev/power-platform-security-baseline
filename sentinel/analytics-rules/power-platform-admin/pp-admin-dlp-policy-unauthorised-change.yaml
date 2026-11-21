@@ -1,0 +1,77 @@
+id: 9f4d7b2a-1c3e-4a8b-9d21-6e8f0a4b1c01
+name: Power Platform - DLP policy created, updated or removed by non-approved admin
+description: |
+  Detects Power Platform Data Loss Prevention (DLP) policy creation, modification or deletion performed by an account outside the approved Power Platform administrator list.
+  Closes a gap in the out-of-the-box rule 'Power Platform - DLP policy updated or removed', which ignores CreateDlpPolicy, suppresses edits within 10 minutes of creation, and does not enforce an approved administrator allow-list.
+  Maps to ASD ISM controls ISM-0263, ISM-0580 and ISM-1585.
+severity: High
+status: Available
+requiredDataConnectors:
+  - connectorId: PowerPlatformAdmin
+    dataTypes:
+      - PowerPlatformAdminActivity
+queryFrequency: 1h
+queryPeriod: 1h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - DefenseEvasion
+relevantTechniques:
+  - T1562.001
+query: |
+  // Replace with your PIM-eligible Power Platform administrator UPNs or a Sentinel watchlist
+  let approved_admins = dynamic([
+      "pp-admin1@yourdomain.gov.au",
+      "pp-admin2@yourdomain.gov.au"
+  ]);
+  PowerPlatformAdminActivity
+  | where TimeGenerated > ago(1h)
+  | where EventOriginalType == "GovernanceApiPolicyOperation"
+  | mv-expand PropertyCollection
+  | extend
+      PropName = tostring(PropertyCollection.Name),
+      PropValue = tostring(PropertyCollection.Value)
+  | summarize Props = make_bag(bag_pack(PropName, PropValue))
+      by TimeGenerated, EventOriginalUid, ActorName
+  | extend
+      Operation = tostring(Props["powerplatform.analytics.resource.tenant.governance.api_policy.operation_name"]),
+      PolicyName = tostring(Props["powerplatform.analytics.resource.display_name"]),
+      PolicyId = tostring(Props["powerplatform.analytics.resource.id"]),
+      ActorUpn = coalesce(tostring(Props["enduser.principal_name"]), ActorName),
+      SrcIpAddr = tostring(Props["enduser.ip_address"])
+  | where Operation in ("CreateDlpPolicy", "UpdateDlpPolicy", "DeleteDlpPolicy")
+  | where ActorUpn !in~ (approved_admins)
+  | extend
+      AccountName = tostring(split(ActorUpn, "@")[0]),
+      UPNSuffix = tostring(split(ActorUpn, "@")[1]),
+      CalculatedSeverity = iif(Operation == "DeleteDlpPolicy", "High", "Medium"),
+      ISMControls = "ISM-0263, ISM-0580, ISM-1585"
+  | project
+      TimeGenerated,
+      ActorUpn,
+      AccountName,
+      UPNSuffix,
+      SrcIpAddr,
+      Operation,
+      PolicyName,
+      PolicyId,
+      CalculatedSeverity,
+      ISMControls
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountName
+      - identifier: UPNSuffix
+        columnName: UPNSuffix
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: SrcIpAddr
+customDetails:
+  Operation: Operation
+  PolicyName: PolicyName
+  PolicyId: PolicyId
+  ISMControls: ISMControls
+version: 1.0.0
+kind: Scheduled

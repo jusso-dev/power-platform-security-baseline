@@ -1,0 +1,47 @@
+// Synthetic KQL datatable test for: pp-admin-role-self-elevation-or-change.yaml
+// Expected result: 2 rows (ApplyAdminRole + System Administrator Associate); non-admin role assignment filtered out.
+let sysadmin_role_ids = dynamic(["00000000-0000-0000-0000-000000000101"]);
+let PowerPlatformAdminActivity = datatable(
+    TimeGenerated: datetime,
+    EventOriginalType: string,
+    ActorName: string,
+    PropertyCollection: dynamic
+) [
+    ago(10m), "ApplyAdminRole", "admin-self@yourdomain.gov.au",
+    dynamic([
+        {"Name": "powerplatform.analytics.resource.environment.id", "Value": "00000000-0000-0000-0000-000000000201"},
+        {"Name": "enduser.ip_address", "Value": "203.0.113.40"}
+    ])
+];
+let DataverseActivity = datatable(
+    TimeGenerated: datetime,
+    Message: string,
+    EntityName: string,
+    UserId: string,
+    ClientIp: string,
+    InstanceUrl: string,
+    EntityId: string,
+    Fields: dynamic
+) [
+    ago(8m), "Associate", "systemuser", "delegated-admin@yourdomain.gov.au", "203.0.113.41", "https://org0001.crm6.dynamics.com", "00000000-0000-0000-0000-000000000501",
+    dynamic([{"Name": "role", "Value": "00000000-0000-0000-0000-000000000101"}]),
+    ago(12m), "Associate", "systemuser", "delegated-admin@yourdomain.gov.au", "198.51.100.5", "https://org0001.crm6.dynamics.com", "00000000-0000-0000-0000-000000000502",
+    dynamic([{"Name": "role", "Value": "00000000-0000-0000-0000-000000000199"}])
+];
+union
+(
+    PowerPlatformAdminActivity
+    | where TimeGenerated > ago(1h)
+    | where EventOriginalType == "ApplyAdminRole"
+    | extend Properties = tostring(PropertyCollection)
+    | extend Environment = extract(@'"powerplatform.analytics.resource.environment.id","Value":"([^"]+)"', 1, Properties)
+    | project TimeGenerated, Actor = ActorName, Action = "Tenant admin self-elevated via ApplyAdminRole", Environment, Target = ActorName
+),
+(
+    DataverseActivity
+    | where TimeGenerated > ago(1h)
+    | where Message == "Associate" and EntityName == "systemuser"
+    | mv-expand Field = Fields
+    | where tostring(Field.Name) == "role" and tostring(Field.Value) in~ (sysadmin_role_ids)
+    | project TimeGenerated, Actor = UserId, Action = "Dataverse System Administrator role assigned", Environment = InstanceUrl, Target = tostring(EntityId)
+)

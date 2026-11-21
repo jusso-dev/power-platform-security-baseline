@@ -1,0 +1,63 @@
+// Synthetic KQL datatable test for: pp-admin-sensitive-env-high-risk-connector.yaml
+// Expected result: 1 row (shared_http in sensitive environment); SharePoint connector and non-sensitive env filtered out.
+let sensitive_environments = dynamic(["00000000-0000-0000-0000-000000000201"]);
+let high_risk_connectors = dynamic([
+    "shared_http",
+    "shared_webcontents",
+    "shared_ftp",
+    "shared_sftpwithssh",
+    "shared_gmail",
+    "shared_outlook",
+    "shared_dropbox",
+    "shared_googledrive",
+    "shared_box",
+    "shared_slack"
+]);
+let PowerPlatformAdminActivity = datatable(
+    TimeGenerated: datetime,
+    EventOriginalUid: string,
+    EventOriginalType: string,
+    ActorName: string,
+    PropertyCollection: dynamic
+) [
+    // Positive case: shared_http in sensitive env
+    ago(10m), "00000000-0000-0000-0000-000000000931", "PutConnection", "maker@yourdomain.gov.au",
+    dynamic([
+        {"Name": "powerplatform.analytics.resource.environment.id", "Value": "00000000-0000-0000-0000-000000000201"},
+        {"Name": "powerplatform.analytics.resource.connector.id", "Value": "/providers/Microsoft.PowerApps/apis/shared_http"},
+        {"Name": "powerplatform.analytics.resource.connection.id", "Value": "00000000-0000-0000-0000-000000000801"},
+        {"Name": "enduser.ip_address", "Value": "203.0.113.50"}
+    ]),
+    // Negative case 1: approved SharePoint connector in sensitive env
+    ago(12m), "00000000-0000-0000-0000-000000000932", "PutConnection", "maker@yourdomain.gov.au",
+    dynamic([
+        {"Name": "powerplatform.analytics.resource.environment.id", "Value": "00000000-0000-0000-0000-000000000201"},
+        {"Name": "powerplatform.analytics.resource.connector.id", "Value": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline"},
+        {"Name": "powerplatform.analytics.resource.connection.id", "Value": "00000000-0000-0000-0000-000000000802"},
+        {"Name": "enduser.ip_address", "Value": "198.51.100.5"}
+    ]),
+    // Negative case 2: shared_http in non-sensitive sandbox env
+    ago(14m), "00000000-0000-0000-0000-000000000933", "PutConnection", "maker@yourdomain.gov.au",
+    dynamic([
+        {"Name": "powerplatform.analytics.resource.environment.id", "Value": "00000000-0000-0000-0000-000000000299"},
+        {"Name": "powerplatform.analytics.resource.connector.id", "Value": "/providers/Microsoft.PowerApps/apis/shared_http"},
+        {"Name": "powerplatform.analytics.resource.connection.id", "Value": "00000000-0000-0000-0000-000000000803"},
+        {"Name": "enduser.ip_address", "Value": "198.51.100.5"}
+    ])
+];
+PowerPlatformAdminActivity
+| where TimeGenerated > ago(1h)
+| where EventOriginalType == "PutConnection"
+| mv-expand PropertyCollection
+| extend
+    PropName = tostring(PropertyCollection.Name),
+    PropValue = tostring(PropertyCollection.Value)
+| summarize Props = make_bag(bag_pack(PropName, PropValue))
+    by TimeGenerated, EventOriginalUid, ActorName
+| extend
+    EnvironmentId = tostring(Props["powerplatform.analytics.resource.environment.id"]),
+    ConnectorId = tolower(tostring(Props["powerplatform.analytics.resource.connector.id"])),
+    ConnectionId = tostring(Props["powerplatform.analytics.resource.connection.id"])
+| where EnvironmentId in~ (sensitive_environments)
+| where ConnectorId has_any (high_risk_connectors)
+| project TimeGenerated, ActorName, EnvironmentId, ConnectorId, ConnectionId

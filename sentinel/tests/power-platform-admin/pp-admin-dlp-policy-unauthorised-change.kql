@@ -1,0 +1,50 @@
+// Synthetic KQL datatable test for: pp-admin-dlp-policy-unauthorised-change.yaml
+// Expected result: 1 row (rogue-user@yourdomain.gov.au DeleteDlpPolicy); approved admin row filtered out.
+let approved_admins = dynamic([
+    "pp-admin1@yourdomain.gov.au",
+    "pp-admin2@yourdomain.gov.au"
+]);
+let PowerPlatformAdminActivity = datatable(
+    TimeGenerated: datetime,
+    EventOriginalUid: string,
+    EventOriginalType: string,
+    ActorName: string,
+    PropertyCollection: dynamic
+) [
+    // Positive test case: non-approved account deletes a DLP policy
+    ago(10m), "00000000-0000-0000-0000-000000000901", "GovernanceApiPolicyOperation", "rogue-user@yourdomain.gov.au",
+    dynamic([
+        {"Name": "powerplatform.analytics.resource.tenant.governance.api_policy.operation_name", "Value": "DeleteDlpPolicy"},
+        {"Name": "powerplatform.analytics.resource.display_name", "Value": "Default Environment Strict DLP"},
+        {"Name": "powerplatform.analytics.resource.id", "Value": "00000000-0000-0000-0000-000000000301"},
+        {"Name": "enduser.principal_name", "Value": "rogue-user@yourdomain.gov.au"},
+        {"Name": "enduser.ip_address", "Value": "203.0.113.10"}
+    ]),
+    // Negative test case: approved admin updates a DLP policy
+    ago(15m), "00000000-0000-0000-0000-000000000902", "GovernanceApiPolicyOperation", "pp-admin1@yourdomain.gov.au",
+    dynamic([
+        {"Name": "powerplatform.analytics.resource.tenant.governance.api_policy.operation_name", "Value": "UpdateDlpPolicy"},
+        {"Name": "powerplatform.analytics.resource.display_name", "Value": "Default Environment Strict DLP"},
+        {"Name": "powerplatform.analytics.resource.id", "Value": "00000000-0000-0000-0000-000000000301"},
+        {"Name": "enduser.principal_name", "Value": "pp-admin1@yourdomain.gov.au"},
+        {"Name": "enduser.ip_address", "Value": "198.51.100.5"}
+    ])
+];
+PowerPlatformAdminActivity
+| where TimeGenerated > ago(1h)
+| where EventOriginalType == "GovernanceApiPolicyOperation"
+| mv-expand PropertyCollection
+| extend
+    PropName = tostring(PropertyCollection.Name),
+    PropValue = tostring(PropertyCollection.Value)
+| summarize Props = make_bag(bag_pack(PropName, PropValue))
+    by TimeGenerated, EventOriginalUid, ActorName
+| extend
+    Operation = tostring(Props["powerplatform.analytics.resource.tenant.governance.api_policy.operation_name"]),
+    PolicyName = tostring(Props["powerplatform.analytics.resource.display_name"]),
+    PolicyId = tostring(Props["powerplatform.analytics.resource.id"]),
+    ActorUpn = coalesce(tostring(Props["enduser.principal_name"]), ActorName),
+    SrcIpAddr = tostring(Props["enduser.ip_address"])
+| where Operation in ("CreateDlpPolicy", "UpdateDlpPolicy", "DeleteDlpPolicy")
+| where ActorUpn !in~ (approved_admins)
+| project TimeGenerated, ActorUpn, SrcIpAddr, Operation, PolicyName, PolicyId

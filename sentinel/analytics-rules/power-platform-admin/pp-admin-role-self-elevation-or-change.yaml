@@ -1,0 +1,92 @@
+id: 9f4d7b2a-1c3e-4a8b-9d21-6e8f0a4b1c04
+name: Power Platform - Admin self-elevation or Dataverse System Administrator granted
+description: |
+  Detects a tenant administrator applying the System Administrator role to themselves inside an environment (ApplyAdminRole) or a Dataverse System Administrator role being associated with a user.
+  Complements the out-of-the-box rule 'Power Platform - Account added to privileged Microsoft Entra roles', which covers Entra directory roles only.
+  Maps to ASD ISM controls ISM-0445, ISM-1175 and ISM-1228.
+severity: High
+status: Available
+requiredDataConnectors:
+  - connectorId: PowerPlatformAdmin
+    dataTypes:
+      - PowerPlatformAdminActivity
+  - connectorId: Dataverse
+    dataTypes:
+      - DataverseActivity
+queryFrequency: 1h
+queryPeriod: 1h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - PrivilegeEscalation
+relevantTechniques:
+  - T1098
+  - T1078
+query: |
+  // Populate with per-environment System Administrator role GUIDs from a Sentinel watchlist
+  let sysadmin_role_ids = dynamic([
+      "00000000-0000-0000-0000-000000000101"
+  ]);
+  union isfuzzy=true
+  (
+      PowerPlatformAdminActivity
+      | where TimeGenerated > ago(1h)
+      | where EventOriginalType == "ApplyAdminRole"
+      | extend Properties = tostring(PropertyCollection)
+      | extend
+          Environment = extract(@'"powerplatform.analytics.resource.environment.id","Value":"([^"]+)"', 1, Properties),
+          SrcIpAddr = extract(@'"enduser.ip_address","Value":"([^"]+)"', 1, Properties)
+      | project
+          TimeGenerated,
+          Actor = ActorName,
+          SrcIpAddr,
+          Action = "Tenant admin self-elevated via ApplyAdminRole",
+          Environment,
+          Target = ActorName
+  ),
+  (
+      DataverseActivity
+      | where TimeGenerated > ago(1h)
+      | where Message == "Associate" and EntityName == "systemuser"
+      | mv-expand Field = Fields
+      | where tostring(Field.Name) == "role" and tostring(Field.Value) in~ (sysadmin_role_ids)
+      | project
+          TimeGenerated,
+          Actor = UserId,
+          SrcIpAddr = ClientIp,
+          Action = "Dataverse System Administrator role assigned",
+          Environment = InstanceUrl,
+          Target = tostring(EntityId)
+  )
+  | extend
+      AccountName = tostring(split(Actor, "@")[0]),
+      UPNSuffix = tostring(split(Actor, "@")[1]),
+      ISMControls = "ISM-0445, ISM-1175, ISM-1228"
+  | project
+      TimeGenerated,
+      Actor,
+      AccountName,
+      UPNSuffix,
+      SrcIpAddr,
+      Action,
+      Environment,
+      Target,
+      ISMControls
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountName
+      - identifier: UPNSuffix
+        columnName: UPNSuffix
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: SrcIpAddr
+customDetails:
+  Action: Action
+  Environment: Environment
+  Target: Target
+  ISMControls: ISMControls
+version: 1.0.0
+kind: Scheduled

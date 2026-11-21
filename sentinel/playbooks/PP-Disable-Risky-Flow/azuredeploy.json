@@ -1,0 +1,214 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "title": "PP-Disable-Risky-Flow",
+    "description": "Stops a suspicious Power Automate flow via the Power Automate Management API using System-Assigned Managed Identity and records the containment action on the Microsoft Sentinel incident.",
+    "author": "power-platform-security-baseline",
+    "prerequisites": [
+      "Assign Microsoft Sentinel Responder role to the Logic App Managed Identity on the Sentinel workspace resource group.",
+      "Register the Logic App Managed Identity as a Power Platform management application with least-privilege permissions scoped to target environments."
+    ]
+  },
+  "parameters": {
+    "PlaybookName": {
+      "type": "string",
+      "defaultValue": "PP-Disable-Risky-Flow",
+      "metadata": {
+        "description": "Name of the Logic App playbook."
+      }
+    },
+    "FlowApiAudience": {
+      "type": "string",
+      "defaultValue": "https://service.flow.microsoft.com/",
+      "metadata": {
+        "description": "OAuth resource audience for the Power Automate Management API."
+      }
+    }
+  },
+  "variables": {
+    "SentinelConnectionName": "[concat('azuresentinel-', parameters('PlaybookName'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Web/connections",
+      "apiVersion": "2016-06-01",
+      "name": "[variables('SentinelConnectionName')]",
+      "location": "[resourceGroup().location]",
+      "kind": "V1",
+      "properties": {
+        "displayName": "[variables('SentinelConnectionName')]",
+        "customParameterValues": {},
+        "parameterValueType": "Alternative",
+        "api": {
+          "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azuresentinel')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "[parameters('PlaybookName')]",
+      "location": "[resourceGroup().location]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/connections', variables('SentinelConnectionName'))]"
+      ],
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "$connections": {
+              "defaultValue": {},
+              "type": "Object"
+            },
+            "FlowApiAudience": {
+              "defaultValue": "https://service.flow.microsoft.com/",
+              "type": "String"
+            }
+          },
+          "triggers": {
+            "Microsoft_Sentinel_incident": {
+              "type": "ApiConnectionWebhook",
+              "inputs": {
+                "body": {
+                  "callback_url": "@{listCallbackUrl()}"
+                },
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                  }
+                },
+                "path": "/incident-creation"
+              }
+            }
+          },
+          "actions": {
+            "Extract_Environment_And_Flow": {
+              "type": "Compose",
+              "runAfter": {},
+              "inputs": {
+                "environmentId": "@first(triggerBody()?['object']?['properties']?['alerts'])?['properties']?['additionalData']?['customDetails']?['EnvironmentId']",
+                "flowId": "@first(triggerBody()?['object']?['properties']?['alerts'])?['properties']?['additionalData']?['customDetails']?['FlowId']"
+              }
+            },
+            "Condition_Has_Identifiers": {
+              "type": "If",
+              "runAfter": {
+                "Extract_Environment_And_Flow": [
+                  "Succeeded"
+                ]
+              },
+              "expression": {
+                "and": [
+                  {
+                    "not": {
+                      "equals": [
+                        "@coalesce(outputs('Extract_Environment_And_Flow')?['environmentId'], '')",
+                        ""
+                      ]
+                    }
+                  },
+                  {
+                    "not": {
+                      "equals": [
+                        "@coalesce(outputs('Extract_Environment_And_Flow')?['flowId'], '')",
+                        ""
+                      ]
+                    }
+                  }
+                ]
+              },
+              "actions": {
+                "Stop_Power_Automate_Flow": {
+                  "type": "Http",
+                  "runAfter": {},
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "https://api.flow.microsoft.com/providers/Microsoft.ProcessSimple/scopes/admin/environments/@{outputs('Extract_Environment_And_Flow')?['environmentId']}/flows/@{outputs('Extract_Environment_And_Flow')?['flowId']}/stop?api-version=2016-11-01",
+                    "authentication": {
+                      "type": "ManagedServiceIdentity",
+                      "audience": "@parameters('FlowApiAudience')"
+                    }
+                  }
+                },
+                "Comment_Flow_Stopped": {
+                  "type": "ApiConnection",
+                  "runAfter": {
+                    "Stop_Power_Automate_Flow": [
+                      "Succeeded"
+                    ]
+                  },
+                  "inputs": {
+                    "body": {
+                      "incidentArmId": "@triggerBody()?['object']?['id']",
+                      "message": "<p>Playbook <strong>PP-Disable-Risky-Flow</strong> stopped flow <code>@{outputs('Extract_Environment_And_Flow')?['flowId']}</code> in environment <code>@{outputs('Extract_Environment_And_Flow')?['environmentId']}</code>.</p>"
+                    },
+                    "host": {
+                      "connection": {
+                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                      }
+                    },
+                    "method": "post",
+                    "path": "/Incidents/Comment"
+                  }
+                }
+              },
+              "else": {
+                "actions": {
+                  "Comment_Missing_Identifiers": {
+                    "type": "ApiConnection",
+                    "runAfter": {},
+                    "inputs": {
+                      "body": {
+                        "incidentArmId": "@triggerBody()?['object']?['id']",
+                        "message": "<p>Playbook <strong>PP-Disable-Risky-Flow</strong> skipped containment because <code>EnvironmentId</code> or <code>FlowId</code> custom details were absent on the triggering alert.</p>"
+                      },
+                      "host": {
+                        "connection": {
+                          "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                        }
+                      },
+                      "method": "post",
+                      "path": "/Incidents/Comment"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "$connections": {
+            "value": {
+              "azuresentinel": {
+                "connectionId": "[resourceId('Microsoft.Web/connections', variables('SentinelConnectionName'))]",
+                "connectionName": "[variables('SentinelConnectionName')]",
+                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azuresentinel')]",
+                "connectionProperties": {
+                  "authentication": {
+                    "type": "ManagedServiceIdentity"
+                  }
+                }
+              }
+            }
+          },
+          "FlowApiAudience": {
+            "value": "[parameters('FlowApiAudience')]"
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "playbookPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Logic/workflows', parameters('PlaybookName')), '2019-05-01', 'Full').identity.principalId]"
+    }
+  }
+}

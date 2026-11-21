@@ -43,6 +43,10 @@ Enable Microsoft's out-of-the-box rules in the [Microsoft Business Applications 
 
 - The Power Platform Security Posture workbook (JSON, deployable ARM template, Deploy to Azure button and synthetic preview screenshot) lives in [sentinel/workbooks/](workbooks/README.md).
 
+## Playbooks
+
+- Four least-privilege, Managed Identity Logic Apps playbooks (notify admin team, disable risky flow, quarantine canvas app, remove user from environment security group and revoke sessions) with Deploy to Azure buttons live in [sentinel/playbooks/](playbooks/README.md).
+
 ## Validation and tests
 
 - Run `python3 scripts/validate_sentinel.py` to validate YAML rules against Microsoft Sentinel content schemas, check ARM JSON templates, block retired table names and verify every rule has a KQL datatable test.

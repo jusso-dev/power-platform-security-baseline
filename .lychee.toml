@@ -1,0 +1,44 @@
+# Lychee link checker configuration
+max_retries = 3
+retry_wait_time = 2
+timeout = 20
+max_concurrency = 16
+user_agent = "Mozilla/5.0 (compatible; power-platform-security-baseline-link-check/1.0)"
+
+accept = [
+  200,
+  204,
+  206,
+  301,
+  302,
+  307,
+  308,
+  429,
+]
+
+exclude_path = [
+  "docs/research/pp-sentinel-research.tsx",
+  "LICENSE",
+  "LICENSE-docs",
+  "node_modules",
+  ".venv",
+  ".git",
+  "assessor/tests/fixtures",
+]
+
+exclude = [
+  '^https?://localhost',
+  '^https?://127\.0\.0\.1',
+  'yourdomain\.gov\.au',
+  'contoso\.com',
+  'contoso\.onmicrosoft\.com',
+  'example\.com',
+  'example\.org',
+  'powerplatformusercontent\.com',
+  'portal\.azure\.com/#create/Microsoft\.Template',
+  'aka\.ms/sentinel-deploy',
+  'https://org[0-9a-z-]*\.crm[0-9]*\.dynamics\.com',
+  'https://api\.bap\.microsoft\.com/providers/Microsoft\.BusinessAppPlatform',
+  'https://api\.powerplatform\.com/',
+  'https://graph\.microsoft\.com/v1\.0/',
+]

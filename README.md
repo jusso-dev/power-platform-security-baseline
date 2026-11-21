@@ -16,7 +16,7 @@ Research input from 21 Nov 2026 is in `docs/research/pp-sentinel-research.tsx`. 
 
 ## Layout
 
-```
+```text
 baseline/        Baseline items, one Markdown file per setting
 assessor/        Read-only assessor (code, tests)
 sentinel/        Analytics rules, hunting queries, workbook, playbooks (ARM/Bicep)

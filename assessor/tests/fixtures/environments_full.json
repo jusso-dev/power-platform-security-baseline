@@ -1,0 +1,130 @@
+{
+  "tenant_id": "00000000-0000-0000-0000-000000000010",
+  "tenant_settings": {
+    "disableEnvironmentCreationByNonAdminUsers": true,
+    "disableTrialEnvironmentCreationByNonAdminUsers": true,
+    "powerPlatform": {
+      "governance": { "enableDefaultEnvironmentRouting": true },
+      "analytics": { "enableTenantLevelAnalytics": true },
+      "security": { "enableCustomerLockbox": true },
+      "powerApps": { "disableShareWithEveryone": true }
+    }
+  },
+  "tenant_isolation": {
+    "properties": { "isDisabled": false, "allowedTenants": [] }
+  },
+  "self_service_purchase_policies": [
+    { "productId": "PowerApps", "productName": "Power Apps", "allowSelfServicePurchase": false }
+  ],
+  "dlp_policies": [],
+  "environments": [
+    {
+      "name": "00000000-0000-0000-0000-000000000201",
+      "properties": {
+        "displayName": "Prod Compliant",
+        "isDefault": false,
+        "environmentSku": "Production",
+        "isSensitive": true,
+        "backupRetentionPeriodInDays": 28,
+        "isLockboxEnabled": true,
+        "linkedEnvironmentMetadata": {
+          "securityGroupId": "00000000-0000-0000-0000-000000000701",
+          "instanceUrl": "https://org0201.crm6.dynamics.com"
+        },
+        "governanceConfiguration": {
+          "protectionLevel": "Standard",
+          "settings": {
+            "extendedSettings": {
+              "excludeSharingWithSecurityGroups": "true",
+              "maxLimitUserSharing": "10",
+              "excludeAgentSharingWithSecurityGroups": "true",
+              "maxLimitAgentUserSharing": "10",
+              "solutionCheckerMode": "Block"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "00000000-0000-0000-0000-000000000202",
+      "properties": {
+        "displayName": "Prod NonCompliant",
+        "isDefault": false,
+        "environmentSku": "Production",
+        "isSensitive": true,
+        "backupRetentionPeriodInDays": 7,
+        "isLockboxEnabled": false,
+        "linkedEnvironmentMetadata": {
+          "securityGroupId": "00000000-0000-0000-0000-000000000000",
+          "instanceUrl": "https://org0202.crm6.dynamics.com"
+        },
+        "governanceConfiguration": {
+          "protectionLevel": "Basic",
+          "settings": {
+            "extendedSettings": {}
+          }
+        }
+      }
+    }
+  ],
+  "environment_groups": [],
+  "enterprise_policies": [],
+  "graph_authorization_policy": { "allowInvitesFrom": "adminsAndGuestInviters" },
+  "privileged_role_assignments": [],
+  "dataverse_org_settings": {
+    "00000000-0000-0000-0000-000000000201": {
+      "isauditenabled": true,
+      "isuseraccessauditenabled": true,
+      "isreadauditenabled": true,
+      "isenablesaslogginginpurview": true,
+      "isbotauditenabled": true,
+      "auditretentionperiodv2": 90,
+      "enableipbasedfirewallrule": true,
+      "ipbasedfirewallrulemode": "Enforce",
+      "allowediprangeforfirewall": "203.0.113.0/24",
+      "enableipbasedcookiebinding": true,
+      "sessiontimeoutenabled": true,
+      "sessiontimeoutinmins": 480,
+      "inactivitytimeoutenabled": true,
+      "inactivitytimeoutinmins": 30,
+      "blockedattachments": "exe;dll;msi;ps1;bat;cmd;vbs;js;hta;scr;lnk;docm;xlsm"
+    },
+    "00000000-0000-0000-0000-000000000202": {
+      "isauditenabled": false,
+      "isuseraccessauditenabled": false,
+      "isreadauditenabled": false,
+      "isenablesaslogginginpurview": false,
+      "isbotauditenabled": false,
+      "auditretentionperiodv2": 30,
+      "enableipbasedfirewallrule": false,
+      "ipbasedfirewallrulemode": "AuditOnly",
+      "allowediprangeforfirewall": "0.0.0.0/0",
+      "enableipbasedcookiebinding": false,
+      "sessiontimeoutenabled": false,
+      "sessiontimeoutinmins": 1440,
+      "inactivitytimeoutenabled": false,
+      "inactivitytimeoutinmins": 120,
+      "blockedattachments": "bat;cmd"
+    }
+  },
+  "copilot_studio_bots": {
+    "00000000-0000-0000-0000-000000000201": [
+      {
+        "botid": "00000000-0000-0000-0000-000000000801",
+        "name": "HR Internal Assistant",
+        "authenticationmode": 2,
+        "statecode": 0,
+        "configuration": "{\"channels\":[\"web\",\"teams\"],\"webChannelSecurityEnabled\":true}"
+      }
+    ],
+    "00000000-0000-0000-0000-000000000202": [
+      {
+        "botid": "00000000-0000-0000-0000-000000000802",
+        "name": "Anonymous Helpdesk Agent",
+        "authenticationmode": 1,
+        "statecode": 0,
+        "configuration": "{\"channels\":[\"web\"],\"webChannelSecurityEnabled\":false}"
+      }
+    ]
+  }
+}

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pp-assessor"
-version = "0.1.0"
+version = "1.0.0"
 description = "Read-only security baseline assessor for Microsoft Power Platform and Copilot Studio."
 readme = "README.md"
 requires-python = ">=3.11"

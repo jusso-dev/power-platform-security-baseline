@@ -1,0 +1,25 @@
+// Synthetic KQL datatable test for: dv-copilot-agent-no-authentication.yaml
+// Expected result: 1 row (authenticationmode == 1); Entra authenticated bot (mode 2) filtered out.
+let DataverseActivity = datatable(
+    TimeGenerated: datetime,
+    UserId: string,
+    ClientIp: string,
+    InstanceUrl: string,
+    EntityName: string,
+    EntityId: string,
+    Message: string,
+    Fields: dynamic
+) [
+    ago(10m), "maker@yourdomain.gov.au", "203.0.113.63", "https://org0001.crm6.dynamics.com", "bot", "00000000-0000-0000-0000-000000000802", "Update",
+    dynamic([{"Name": "authenticationmode", "Value": "1"}]),
+    ago(15m), "maker@yourdomain.gov.au", "198.51.100.5", "https://org0001.crm6.dynamics.com", "bot", "00000000-0000-0000-0000-000000000801", "Create",
+    dynamic([{"Name": "authenticationmode", "Value": "2"}])
+];
+DataverseActivity
+| where TimeGenerated > ago(1h)
+| where EntityName == "bot" and Message in ("Create", "Update")
+| mv-expand Field = Fields
+| where tolower(tostring(Field.Name)) == "authenticationmode"
+| extend AuthMode = tostring(Field.Value)
+| where AuthMode in ("1", "None")
+| project TimeGenerated, UserId, InstanceUrl, BotId = EntityId, AuthMode

@@ -1,0 +1,30 @@
+id: 7d3a5c2b-6e8f-4b1a-9c40-1e6d8a2f4b02
+name: Hunt - Dataverse high-volume TDS SQL and Web API bulk retrieval
+description: |
+  Hunts for high-volume RetrieveMultiple and ExecutePowerBISql (TDS endpoint) queries in Dataverse over 7 days to identify scraping, shadow BI extraction or unauthorised API harvesting.
+  Requires Dataverse Read logs (PP-ENV-003) on target environments.
+requiredDataConnectors:
+  - connectorId: Dataverse
+    dataTypes:
+      - DataverseActivity
+tactics:
+  - Collection
+  - Exfiltration
+relevantTechniques:
+  - T1213
+  - T1567
+query: |
+  DataverseActivity
+  | where TimeGenerated > ago(7d)
+  | where Message in ("RetrieveMultiple", "ExecutePowerBISql")
+  | summarize
+      TotalReads = count(),
+      DistinctEntities = dcount(EntityName),
+      Entities = make_set(EntityName, 25),
+      UserAgents = make_set(UserAgent, 10),
+      FirstSeen = min(TimeGenerated),
+      LastSeen = max(TimeGenerated)
+      by UserId, ClientIp, InstanceUrl, Message
+  | where TotalReads >= 250 or DistinctEntities >= 10
+  | order by TotalReads desc
+version: 1.0.0

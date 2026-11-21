@@ -1,0 +1,72 @@
+id: 8c2e4f1a-7b9d-4c3e-8a10-2d5f7b9e3a02
+name: Dataverse - Bulk record deletion or audit log purge
+description: |
+  Detects bulk record deletion jobs (BulkDelete), audit partition deletion (DeleteAuditData) or high-volume individual Delete operations in Dataverse outside approved maintenance accounts.
+  Maps to ASD ISM controls ISM-0585 and ISM-1511.
+severity: High
+status: Available
+requiredDataConnectors:
+  - connectorId: Dataverse
+    dataTypes:
+      - DataverseActivity
+queryFrequency: 1h
+queryPeriod: 1h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - Impact
+  - DefenseEvasion
+relevantTechniques:
+  - T1485
+  - T1070
+query: |
+  // Exclude scheduled archiving service principals once validated
+  let maintenance_accounts = dynamic([
+      "svc-dataverse-archive@yourdomain.gov.au"
+  ]);
+  let delete_threshold = 100;
+  DataverseActivity
+  | where TimeGenerated > ago(1h)
+  | where Message in ("BulkDelete", "DeleteAuditData", "Delete")
+  | where UserId !in~ (maintenance_accounts)
+  | summarize
+      DeleteCount = count(),
+      Entities = make_set(EntityName, 50),
+      FirstSeen = min(TimeGenerated),
+      LastSeen = max(TimeGenerated)
+      by UserId, ClientIp, InstanceUrl, Message
+  | where Message in ("BulkDelete", "DeleteAuditData") or DeleteCount >= delete_threshold
+  | extend
+      AccountName = tostring(split(UserId, "@")[0]),
+      UPNSuffix = tostring(split(UserId, "@")[1]),
+      ISMControls = "ISM-0585, ISM-1511"
+  | project
+      FirstSeen,
+      LastSeen,
+      UserId,
+      AccountName,
+      UPNSuffix,
+      ClientIp,
+      InstanceUrl,
+      Message,
+      DeleteCount,
+      Entities,
+      ISMControls
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountName
+      - identifier: UPNSuffix
+        columnName: UPNSuffix
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: ClientIp
+customDetails:
+  InstanceUrl: InstanceUrl
+  Message: Message
+  DeleteCount: DeleteCount
+  ISMControls: ISMControls
+version: 1.0.0
+kind: Scheduled

@@ -1,0 +1,34 @@
+// Synthetic KQL datatable test for: pa-flow-created-after-risky-signin.yaml
+// Expected result: 1 row (compromised@yourdomain.gov.au creates flow after high-risk sign-in).
+let SigninLogs = datatable(
+    TimeGenerated: datetime,
+    UserPrincipalName: string,
+    RiskLevelDuringSignIn: string,
+    RiskState: string,
+    IPAddress: string
+) [
+    ago(30m), "compromised@yourdomain.gov.au", "high", "atRisk", "203.0.113.70",
+    ago(40m), "normal@yourdomain.gov.au", "none", "none", "198.51.100.10"
+];
+let PowerAutomateActivity = datatable(
+    TimeGenerated: datetime,
+    ActorName: string,
+    SrcIpAddr: string,
+    EventOriginalType: string,
+    FlowConnectorNames: string,
+    FlowDetailsUrl: string
+) [
+    ago(10m), "compromised@yourdomain.gov.au", "203.0.113.70", "CreateFlow", "Office 365 Outlook, HTTP", "https://make.powerautomate.com/environments/00000000-0000-0000-0000-000000000201/flows/f9",
+    ago(12m), "normal@yourdomain.gov.au", "198.51.100.10", "CreateFlow", "SharePoint", "https://make.powerautomate.com/environments/00000000-0000-0000-0000-000000000201/flows/f10"
+];
+let risky_users = SigninLogs
+    | where TimeGenerated > ago(1d)
+    | where RiskLevelDuringSignIn in ("medium", "high") or RiskState == "atRisk"
+    | summarize RiskySignInTime = max(TimeGenerated) by UserPrincipalName = tolower(UserPrincipalName);
+PowerAutomateActivity
+| where TimeGenerated > ago(1h)
+| where EventOriginalType in ("CreateFlow", "EditFlow")
+| extend UserPrincipalName = tolower(ActorName)
+| join kind=inner risky_users on UserPrincipalName
+| where TimeGenerated >= RiskySignInTime
+| project TimeGenerated, ActorName, EventOriginalType, FlowConnectorNames, RiskySignInTime

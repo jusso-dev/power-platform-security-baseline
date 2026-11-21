@@ -1,0 +1,23 @@
+// Synthetic KQL datatable test for: pa-flow-personal-or-http-connectors.yaml
+// Expected result: 1 row (Gmail + HTTP flow in non-approved env); SharePoint flow and approved integration env filtered out.
+let risky_connectors = dynamic(["Outlook.com", "Gmail", "Google Drive", "Dropbox", "Box", "HTTP", "FTP", "SFTP", "Telegram", "Slack"]);
+let approved_integration_envs = dynamic(["00000000-0000-0000-0000-000000000250"]);
+let PowerAutomateActivity = datatable(
+    TimeGenerated: datetime,
+    ActorName: string,
+    SrcIpAddr: string,
+    EventOriginalType: string,
+    FlowConnectorNames: string,
+    FlowDetailsUrl: string
+) [
+    ago(10m), "maker@yourdomain.gov.au", "203.0.113.64", "CreateFlow", "Office 365 Outlook, Gmail, HTTP", "https://make.powerautomate.com/environments/00000000-0000-0000-0000-000000000201/flows/f1",
+    ago(12m), "maker@yourdomain.gov.au", "198.51.100.5", "EditFlow", "SharePoint, Microsoft Teams", "https://make.powerautomate.com/environments/00000000-0000-0000-0000-000000000201/flows/f2",
+    ago(14m), "integration-svc@yourdomain.gov.au", "198.51.100.6", "EditFlow", "HTTP, Dataverse", "https://make.powerautomate.com/environments/00000000-0000-0000-0000-000000000250/flows/f3"
+];
+PowerAutomateActivity
+| where TimeGenerated > ago(1h)
+| where EventOriginalType in ("CreateFlow", "EditFlow")
+| where FlowConnectorNames has_any (risky_connectors)
+| extend EnvironmentId = tostring(split(parse_url(FlowDetailsUrl).Path, "/")[2])
+| where EnvironmentId !in~ (approved_integration_envs)
+| project TimeGenerated, ActorName, EventOriginalType, FlowConnectorNames, EnvironmentId

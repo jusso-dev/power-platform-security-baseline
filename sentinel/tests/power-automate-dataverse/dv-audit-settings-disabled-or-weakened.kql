@@ -1,0 +1,29 @@
+// Synthetic KQL datatable test for: dv-audit-settings-disabled-or-weakened.yaml
+// Expected result: 1 row (isreadauditenabled set to false); enabling isauditenabled filtered out.
+let audit_flags = dynamic([
+    "isauditenabled",
+    "isuseraccessauditenabled",
+    "isreadauditenabled",
+    "isenablesaslogginginpurview"
+]);
+let DataverseActivity = datatable(
+    TimeGenerated: datetime,
+    UserId: string,
+    ClientIp: string,
+    InstanceUrl: string,
+    EntityName: string,
+    Message: string,
+    Fields: dynamic
+) [
+    ago(8m), "rogue-admin@yourdomain.gov.au", "203.0.113.62", "https://org0001.crm6.dynamics.com", "organization", "Update",
+    dynamic([{"Name": "isreadauditenabled", "Value": "false"}]),
+    ago(12m), "pp-admin1@yourdomain.gov.au", "198.51.100.5", "https://org0001.crm6.dynamics.com", "organization", "Update",
+    dynamic([{"Name": "isauditenabled", "Value": "true"}])
+];
+DataverseActivity
+| where TimeGenerated > ago(1h)
+| where EntityName == "organization" and Message == "Update"
+| mv-expand Field = Fields
+| extend FieldName = tolower(tostring(Field.Name)), FieldValue = tolower(tostring(Field.Value))
+| where FieldName in (audit_flags) and FieldValue in ("false", "0")
+| project TimeGenerated, UserId, ClientIp, InstanceUrl, DisabledSetting = FieldName, NewValue = FieldValue

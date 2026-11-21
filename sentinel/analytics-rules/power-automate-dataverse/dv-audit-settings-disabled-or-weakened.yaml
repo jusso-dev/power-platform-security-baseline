@@ -1,0 +1,67 @@
+id: 8c2e4f1a-7b9d-4c3e-8a10-2d5f7b9e3a03
+name: Dataverse - Global, read or user-access audit settings disabled
+description: |
+  Detects any modification to the Dataverse organization entity that disables global auditing (isauditenabled), user access auditing (isuseraccessauditenabled) or read auditing (isreadauditenabled).
+  Extends the out-of-the-box audit disabled rule to explicitly cover read-log and user-access-log weakening across production environments.
+  Maps to ASD ISM controls ISM-0580 and ISM-1228.
+severity: High
+status: Available
+requiredDataConnectors:
+  - connectorId: Dataverse
+    dataTypes:
+      - DataverseActivity
+queryFrequency: 1h
+queryPeriod: 1h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - DefenseEvasion
+relevantTechniques:
+  - T1562.001
+  - T1562.008
+query: |
+  let audit_flags = dynamic([
+      "isauditenabled",
+      "isuseraccessauditenabled",
+      "isreadauditenabled",
+      "isenablesaslogginginpurview"
+  ]);
+  DataverseActivity
+  | where TimeGenerated > ago(1h)
+  | where EntityName == "organization" and Message == "Update"
+  | mv-expand Field = Fields
+  | extend
+      FieldName = tolower(tostring(Field.Name)),
+      FieldValue = tolower(tostring(Field.Value))
+  | where FieldName in (audit_flags) and FieldValue in ("false", "0")
+  | extend
+      AccountName = tostring(split(UserId, "@")[0]),
+      UPNSuffix = tostring(split(UserId, "@")[1]),
+      ISMControls = "ISM-0580, ISM-1228"
+  | project
+      TimeGenerated,
+      UserId,
+      AccountName,
+      UPNSuffix,
+      ClientIp,
+      InstanceUrl,
+      DisabledSetting = FieldName,
+      NewValue = FieldValue,
+      ISMControls
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountName
+      - identifier: UPNSuffix
+        columnName: UPNSuffix
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: ClientIp
+customDetails:
+  InstanceUrl: InstanceUrl
+  DisabledSetting: DisabledSetting
+  ISMControls: ISMControls
+version: 1.0.0
+kind: Scheduled

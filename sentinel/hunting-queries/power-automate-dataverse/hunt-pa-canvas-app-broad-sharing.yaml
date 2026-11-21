@@ -1,0 +1,36 @@
+id: 7d3a5c2b-6e8f-4b1a-9c40-1e6d8a2f4b06
+name: Hunt - Canvas app shared with Everyone or 20 or more principals
+description: |
+  Hunts for Power Apps canvas apps shared tenant-wide (targetuser.id matching the tenant GUID) or shared with 20 or more distinct principals within 1 hour.
+  Note: Verify in a sandbox app that sharing with Everyone logs your tenant GUID in targetuser.id.
+requiredDataConnectors:
+  - connectorId: PowerPlatformAdmin
+    dataTypes:
+      - PowerPlatformAdminActivity
+tactics:
+  - LateralMovement
+  - InitialAccess
+relevantTechniques:
+  - T1534
+query: |
+  // Replace with your Microsoft Entra tenant GUID
+  let tenant_id = "00000000-0000-0000-0000-000000000001";
+  PowerPlatformAdminActivity
+  | where TimeGenerated > ago(7d)
+  | where EventOriginalType in ("PowerAppPermissionEdited", "AdminModifyAppPermissions")
+  | extend Properties = tostring(PropertyCollection)
+  | extend
+      AppId = tolower(replace_string(
+          extract(@'"powerplatform.analytics.resource.power_app.id","Value":"([^"]+)"', 1, Properties),
+          "/providers/Microsoft.PowerApps/apps/", ""
+      )),
+      TargetPrincipalId = extract(@'"targetuser.id","Value":"([^"]+)"', 1, Properties)
+  | summarize
+      Grants = count(),
+      DistinctTargets = dcount(TargetPrincipalId),
+      SharedWithEveryone = countif(TargetPrincipalId =~ tenant_id),
+      SampleTargets = make_set(TargetPrincipalId, 25)
+      by ActorName, AppId, bin(TimeGenerated, 1h)
+  | where SharedWithEveryone > 0 or DistinctTargets >= 20
+  | order by SharedWithEveryone desc, DistinctTargets desc
+version: 1.0.0

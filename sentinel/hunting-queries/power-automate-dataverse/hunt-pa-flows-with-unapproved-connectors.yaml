@@ -1,0 +1,42 @@
+id: 7d3a5c2b-6e8f-4b1a-9c40-1e6d8a2f4b04
+name: Hunt - Power Automate flows using unapproved, HTTP or consumer connectors
+description: |
+  Inventories all Power Automate flows created or edited over the past 30 days that reference HTTP, file-transfer, custom or consumer connectors, grouped by maker and environment.
+  Supports DLP gap reviews and pre-enforcement impact analysis.
+requiredDataConnectors:
+  - connectorId: PowerAutomate
+    dataTypes:
+      - PowerAutomateActivity
+tactics:
+  - Exfiltration
+  - Execution
+relevantTechniques:
+  - T1567
+  - T1059
+query: |
+  let watch_connectors = dynamic([
+      "HTTP",
+      "FTP",
+      "SFTP",
+      "Gmail",
+      "Outlook.com",
+      "Dropbox",
+      "Google Drive",
+      "Box",
+      "Slack",
+      "Telegram",
+      "Webhook"
+  ]);
+  PowerAutomateActivity
+  | where TimeGenerated > ago(30d)
+  | where EventOriginalType in ("CreateFlow", "EditFlow")
+  | where FlowConnectorNames has_any (watch_connectors)
+  | extend EnvironmentId = tostring(split(parse_url(FlowDetailsUrl).Path, "/")[2])
+  | summarize
+      Edits = count(),
+      Connectors = make_set(FlowConnectorNames, 20),
+      Flows = make_set(FlowDetailsUrl, 20),
+      LastActivity = max(TimeGenerated)
+      by ActorName, EnvironmentId
+  | order by Edits desc
+version: 1.0.0

@@ -1,0 +1,33 @@
+id: 7d3a5c2b-6e8f-4b1a-9c40-1e6d8a2f4b03
+name: Hunt - Dataverse rare entity access or volume spike by application users
+description: |
+  Highlights non-interactive Dataverse application users accessing tables they have not touched in the prior 14 days or showing an unusual activity burst.
+  Helps detect abused service principal credentials operating outside MFA controls.
+requiredDataConnectors:
+  - connectorId: Dataverse
+    dataTypes:
+      - DataverseActivity
+tactics:
+  - Execution
+  - Persistence
+  - Collection
+relevantTechniques:
+  - T1078.004
+  - T1213
+query: |
+  let baseline_pairs = DataverseActivity
+      | where TimeGenerated between (ago(15d) .. ago(1d))
+      | where isnotempty(AppId)
+      | distinct AppId, InstanceUrl, EntityName, Message;
+  DataverseActivity
+  | where TimeGenerated > ago(1d)
+  | where isnotempty(AppId)
+  | join kind=leftanti baseline_pairs on AppId, InstanceUrl, EntityName, Message
+  | summarize
+      Events = count(),
+      ClientIPs = make_set(ClientIp, 10),
+      FirstSeen = min(TimeGenerated),
+      LastSeen = max(TimeGenerated)
+      by AppId, UserId, InstanceUrl, EntityName, Message
+  | order by Events desc
+version: 1.0.0

@@ -1,0 +1,22 @@
+// Synthetic KQL datatable test for: dv-bulk-record-deletion-or-purge.yaml
+// Expected result: 2 rows (BulkDelete and DeleteAuditData by non-maintenance user); maintenance account filtered out.
+let maintenance_accounts = dynamic(["svc-dataverse-archive@yourdomain.gov.au"]);
+let delete_threshold = 100;
+let DataverseActivity = datatable(
+    TimeGenerated: datetime,
+    UserId: string,
+    ClientIp: string,
+    InstanceUrl: string,
+    Message: string,
+    EntityName: string
+) [
+    ago(10m), "insider@yourdomain.gov.au", "203.0.113.61", "https://org0001.crm6.dynamics.com", "BulkDelete", "account",
+    ago(11m), "insider@yourdomain.gov.au", "203.0.113.61", "https://org0001.crm6.dynamics.com", "DeleteAuditData", "audit",
+    ago(15m), "svc-dataverse-archive@yourdomain.gov.au", "198.51.100.20", "https://org0001.crm6.dynamics.com", "BulkDelete", "asyncoperation"
+];
+DataverseActivity
+| where TimeGenerated > ago(1h)
+| where Message in ("BulkDelete", "DeleteAuditData", "Delete")
+| where UserId !in~ (maintenance_accounts)
+| summarize DeleteCount = count(), Entities = make_set(EntityName, 50) by UserId, ClientIp, InstanceUrl, Message
+| where Message in ("BulkDelete", "DeleteAuditData") or DeleteCount >= delete_threshold

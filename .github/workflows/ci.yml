@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  style:
-    name: Style and banned characters
+  ci:
+    name: Lint, style, links and validation
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -22,25 +22,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Run style check
+      - name: Run style check (no em dashes, no emojis, basic secret scan)
         run: python3 scripts/check_style.py
-
-  markdownlint:
-    name: Markdown lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
       - name: Run markdownlint-cli2
         uses: DavidAnson/markdownlint-cli2-action@v19
-
-  links:
-    name: Link check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
       - name: Check links with lychee
         uses: lycheeverse/lychee-action@v2
@@ -49,18 +35,6 @@ jobs:
           fail: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  validate:
-    name: Schema, Sentinel and Assessor validation
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
 
       - name: Validate baseline items (when present)
         run: |

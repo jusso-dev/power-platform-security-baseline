@@ -41,4 +41,7 @@ exclude = [
   'https://api\.bap\.microsoft\.com/providers/Microsoft\.BusinessAppPlatform',
   'https://api\.powerplatform\.com/',
   'https://graph\.microsoft\.com/v1\.0/',
+  # WAF/bot protection on these official domains rejects GitHub Actions datacenter IPs (HTTP/2 reset or 403)
+  '^https://www\.cyber\.gov\.au/',
+  '^https://techcommunity\.microsoft\.com/',
 ]

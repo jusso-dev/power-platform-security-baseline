@@ -1,0 +1,124 @@
+{
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "tenant_settings": {
+    "disableEnvironmentCreationByNonAdminUsers": true,
+    "disableTrialEnvironmentCreationByNonAdminUsers": true,
+    "disableCapacityAllocationByEnvironmentAdmins": true,
+    "powerPlatform": {
+      "governance": {
+        "enableDefaultEnvironmentRouting": true
+      },
+      "analytics": {
+        "enableTenantLevelAnalytics": true
+      },
+      "powerApps": {
+        "disableShareWithEveryone": true
+      }
+    }
+  },
+  "tenant_isolation": {
+    "properties": {
+      "isDisabled": false,
+      "allowedTenants": [
+        {
+          "tenantId": "00000000-0000-0000-0000-000000000099",
+          "direction": "Outbound"
+        }
+      ]
+    }
+  },
+  "self_service_purchase_policies": [
+    { "productId": "PowerApps", "productName": "Power Apps", "allowSelfServicePurchase": false },
+    { "productId": "PowerAutomate", "productName": "Power Automate", "allowSelfServicePurchase": false },
+    { "productId": "CopilotStudio", "productName": "Copilot Studio", "allowSelfServicePurchase": false }
+  ],
+  "dlp_policies": [
+    {
+      "name": "00000000-0000-0000-0000-000000000301",
+      "displayName": "Tenant Baseline Strict DLP",
+      "environmentType": "AllEnvironments",
+      "defaultConnectorsClassification": "Blocked",
+      "environments": [],
+      "connectorGroups": [
+        {
+          "classification": "Confidential",
+          "connectors": [
+            { "id": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "name": "shared_sharepointonline" }
+          ]
+        },
+        {
+          "classification": "Blocked",
+          "connectors": [
+            { "id": "/providers/Microsoft.PowerApps/apis/shared_http", "name": "shared_http" },
+            { "id": "/providers/Microsoft.PowerApps/apis/shared_ftp", "name": "shared_ftp" },
+            { "id": "/providers/Microsoft.PowerApps/apis/shared_sftpwithssh", "name": "shared_sftpwithssh" },
+            { "id": "/providers/Microsoft.PowerApps/apis/shared_gmail", "name": "shared_gmail" },
+            { "id": "/providers/Microsoft.PowerApps/apis/shared_outlook", "name": "shared_outlook" },
+            { "id": "/providers/Microsoft.PowerApps/apis/shared_dropbox", "name": "shared_dropbox" },
+            { "id": "/providers/Microsoft.PowerApps/apis/shared_googledrive", "name": "shared_googledrive" },
+            { "id": "/providers/Microsoft.PowerApps/apis/shared_pva-no-auth", "name": "shared_pva-no-auth" },
+            { "id": "/providers/Microsoft.PowerApps/apis/shared_pva-directline", "name": "shared_pva-directline" },
+            { "id": "/providers/Microsoft.PowerApps/apis/shared_pva-facebook", "name": "shared_pva-facebook" },
+            { "id": "/providers/Microsoft.PowerApps/apis/shared_pva-knowledge-bing", "name": "shared_pva-knowledge-bing" },
+            { "id": "/providers/Microsoft.PowerApps/apis/shared_pva-skills", "name": "shared_pva-skills" }
+          ]
+        }
+      ]
+    }
+  ],
+  "environments": [
+    {
+      "name": "Default-00000000-0000-0000-0000-000000000001",
+      "properties": {
+        "displayName": "Contoso (default)",
+        "isDefault": true,
+        "environmentSku": "Default",
+        "governanceConfiguration": {
+          "protectionLevel": "Standard"
+        }
+      }
+    },
+    {
+      "name": "00000000-0000-0000-0000-000000000201",
+      "properties": {
+        "displayName": "Production Core",
+        "isDefault": false,
+        "environmentSku": "Production",
+        "governanceConfiguration": {
+          "protectionLevel": "Standard"
+        }
+      }
+    }
+  ],
+  "environment_groups": [
+    {
+      "name": "00000000-0000-0000-0000-000000000401",
+      "properties": {
+        "displayName": "Production Managed Group",
+        "rulesPublished": true,
+        "rules": ["SharingControls", "SolutionChecker"]
+      }
+    }
+  ],
+  "enterprise_policies": [
+    {
+      "name": "au-prod-cmk-policy",
+      "kind": "Encryption",
+      "properties": {
+        "kind": "Encryption"
+      }
+    }
+  ],
+  "graph_authorization_policy": {
+    "allowInvitesFrom": "adminsAndGuestInviters"
+  },
+  "privileged_role_assignments": [
+    {
+      "id": "00000000-0000-0000-0000-000000000501",
+      "roleDefinitionId": "11648597-926c-4cf3-9c36-bcebb0ba8dcc",
+      "principalId": "00000000-0000-0000-0000-000000000601"
+    }
+  ],
+  "dataverse_org_settings": {},
+  "copilot_studio_bots": {}
+}

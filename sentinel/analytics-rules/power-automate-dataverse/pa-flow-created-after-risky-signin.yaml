@@ -1,0 +1,74 @@
+id: 8c2e4f1a-7b9d-4c3e-8a10-2d5f7b9e3a06
+name: Power Automate - Flow created or edited following risky Microsoft Entra sign-in
+description: |
+  Correlates Microsoft Entra ID Protection medium/high risk sign-ins with subsequent Power Automate flow creation or modification by the same user within 24 hours.
+  Detects compromised accounts establishing automated email forwarding or cloud data exfiltration workflows.
+  Requires Microsoft Entra ID P2 for risk fields. Maps to ASD ISM controls ISM-0585 and ISM-1228.
+severity: High
+status: Available
+requiredDataConnectors:
+  - connectorId: PowerAutomate
+    dataTypes:
+      - PowerAutomateActivity
+  - connectorId: AzureActiveDirectory
+    dataTypes:
+      - SigninLogs
+queryFrequency: 1h
+queryPeriod: 1d
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - InitialAccess
+  - Exfiltration
+relevantTechniques:
+  - T1078
+  - T1567
+query: |
+  let risky_users = SigninLogs
+      | where TimeGenerated > ago(1d)
+      | where RiskLevelDuringSignIn in ("medium", "high") or RiskState == "atRisk"
+      | summarize
+          RiskySignInTime = max(TimeGenerated),
+          RiskLevels = make_set(RiskLevelDuringSignIn, 5),
+          RiskyIPs = make_set(IPAddress, 10)
+          by UserPrincipalName = tolower(UserPrincipalName);
+  PowerAutomateActivity
+  | where TimeGenerated > ago(1h)
+  | where EventOriginalType in ("CreateFlow", "EditFlow")
+  | extend UserPrincipalName = tolower(ActorName)
+  | join kind=inner risky_users on UserPrincipalName
+  | where TimeGenerated >= RiskySignInTime
+  | extend
+      AccountName = tostring(split(ActorName, "@")[0]),
+      UPNSuffix = tostring(split(ActorName, "@")[1]),
+      ISMControls = "ISM-0585, ISM-1228"
+  | project
+      TimeGenerated,
+      ActorName,
+      AccountName,
+      UPNSuffix,
+      SrcIpAddr,
+      EventOriginalType,
+      FlowConnectorNames,
+      FlowDetailsUrl,
+      RiskySignInTime,
+      RiskLevels,
+      RiskyIPs,
+      ISMControls
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountName
+      - identifier: UPNSuffix
+        columnName: UPNSuffix
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: SrcIpAddr
+customDetails:
+  EventOriginalType: EventOriginalType
+  FlowConnectorNames: FlowConnectorNames
+  ISMControls: ISMControls
+version: 1.0.0
+kind: Scheduled

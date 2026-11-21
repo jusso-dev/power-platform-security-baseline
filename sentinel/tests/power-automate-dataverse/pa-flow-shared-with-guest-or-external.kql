@@ -1,0 +1,22 @@
+// Synthetic KQL datatable test for: pa-flow-shared-with-guest-or-external.yaml
+// Expected result: 1 row (external Owner share); internal share filtered out.
+let internal_domains = dynamic(["yourdomain.gov.au"]);
+let PowerAutomateActivity = datatable(
+    TimeGenerated: datetime,
+    ActorName: string,
+    SrcIpAddr: string,
+    EventOriginalType: string,
+    RecipientUpn: string,
+    SharingPermission: string,
+    FlowDetailsUrl: string
+) [
+    ago(10m), "maker@yourdomain.gov.au", "203.0.113.65", "EditFlowPermissions", "external_contractor.com#EXT#@yourdomain.onmicrosoft.com", "3", "https://make.powerautomate.com/environments/00000000-0000-0000-0000-000000000201/flows/f4",
+    ago(12m), "maker@yourdomain.gov.au", "198.51.100.5", "EditFlowPermissions", "colleague@yourdomain.gov.au", "2", "https://make.powerautomate.com/environments/00000000-0000-0000-0000-000000000201/flows/f5"
+];
+PowerAutomateActivity
+| where TimeGenerated > ago(1h)
+| where isnotempty(RecipientUpn)
+| extend RecipientDomain = tolower(tostring(split(RecipientUpn, "@")[1]))
+| where RecipientUpn has "#EXT#" or RecipientDomain !in (internal_domains)
+| extend Permission = case(SharingPermission == "3", "Owner", SharingPermission == "2", "Run-only", SharingPermission)
+| project TimeGenerated, ActorName, RecipientUpn, Permission, FlowDetailsUrl

@@ -1,0 +1,65 @@
+id: 8c2e4f1a-7b9d-4c3e-8a10-2d5f7b9e3a04
+name: Copilot Studio - Agent created or modified to No authentication
+description: |
+  Detects a Copilot Studio agent (Dataverse bot table) created or updated with authenticationmode set to 1 (No authentication).
+  Closes Microsoft's Sentinel logging gap for Copilot Studio admin/maker Purview events by monitoring Dataverse bot table auditing directly.
+  Verify the authenticationmode picklist integer in your environment and enforce PP-CS-002 DLP blocking as primary prevention.
+  Maps to ASD ISM controls ISM-0407 and ISM-1585.
+severity: High
+status: Available
+requiredDataConnectors:
+  - connectorId: Dataverse
+    dataTypes:
+      - DataverseActivity
+queryFrequency: 1h
+queryPeriod: 1h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - InitialAccess
+  - DefenseEvasion
+relevantTechniques:
+  - T1190
+  - T1562.001
+query: |
+  // Prerequisite: enable Dataverse auditing on the 'bot' table in agent environments (PP-CS-009)
+  DataverseActivity
+  | where TimeGenerated > ago(1h)
+  | where EntityName == "bot" and Message in ("Create", "Update")
+  | mv-expand Field = Fields
+  | where tolower(tostring(Field.Name)) == "authenticationmode"
+  | extend AuthMode = tostring(Field.Value)
+  | where AuthMode in ("1", "None")
+  | extend
+      AccountName = tostring(split(UserId, "@")[0]),
+      UPNSuffix = tostring(split(UserId, "@")[1]),
+      ISMControls = "ISM-0407, ISM-1585"
+  | project
+      TimeGenerated,
+      UserId,
+      AccountName,
+      UPNSuffix,
+      ClientIp,
+      InstanceUrl,
+      BotId = tostring(EntityId),
+      Message,
+      AuthMode,
+      ISMControls
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountName
+      - identifier: UPNSuffix
+        columnName: UPNSuffix
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: ClientIp
+customDetails:
+  InstanceUrl: InstanceUrl
+  BotId: BotId
+  AuthMode: AuthMode
+  ISMControls: ISMControls
+version: 1.0.0
+kind: Scheduled

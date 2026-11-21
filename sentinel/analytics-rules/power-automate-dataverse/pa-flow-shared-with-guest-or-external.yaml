@@ -1,0 +1,68 @@
+id: 8c2e4f1a-7b9d-4c3e-8a10-2d5f7b9e3a07
+name: Power Automate - Flow shared with guest or external domain
+description: |
+  Detects Power Automate flows shared with guest accounts (#EXT#) or recipients outside the organisation's approved internal domains.
+  External Owner grants (SharingPermission == 3) allow external users to inspect connection references and modify flow logic.
+  Maps to ASD ISM controls ISM-0407 and ISM-1585.
+severity: Medium
+status: Available
+requiredDataConnectors:
+  - connectorId: PowerAutomate
+    dataTypes:
+      - PowerAutomateActivity
+queryFrequency: 1h
+queryPeriod: 1h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - Persistence
+  - LateralMovement
+relevantTechniques:
+  - T1098
+query: |
+  // Replace with your organisation's verified Microsoft Entra domains
+  let internal_domains = dynamic([
+      "yourdomain.gov.au"
+  ]);
+  PowerAutomateActivity
+  | where TimeGenerated > ago(1h)
+  | where isnotempty(RecipientUpn)
+  | extend RecipientDomain = tolower(tostring(split(RecipientUpn, "@")[1]))
+  | where RecipientUpn has "#EXT#" or RecipientDomain !in (internal_domains)
+  | extend
+      Permission = case(
+          tostring(SharingPermission) == "3", "Owner",
+          tostring(SharingPermission) == "2", "Run-only",
+          tostring(SharingPermission)
+      ),
+      AccountName = tostring(split(ActorName, "@")[0]),
+      UPNSuffix = tostring(split(ActorName, "@")[1]),
+      ISMControls = "ISM-0407, ISM-1585"
+  | project
+      TimeGenerated,
+      ActorName,
+      AccountName,
+      UPNSuffix,
+      SrcIpAddr,
+      EventOriginalType,
+      RecipientUpn,
+      Permission,
+      FlowDetailsUrl,
+      ISMControls
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountName
+      - identifier: UPNSuffix
+        columnName: UPNSuffix
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: SrcIpAddr
+customDetails:
+  RecipientUpn: RecipientUpn
+  Permission: Permission
+  ISMControls: ISMControls
+version: 1.0.0
+kind: Scheduled

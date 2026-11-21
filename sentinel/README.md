@@ -26,6 +26,18 @@ Enable Microsoft's out-of-the-box rules in the [Microsoft Business Applications 
 | [pp-admin-environment-unapproved-region.yaml](analytics-rules/power-platform-admin/pp-admin-environment-unapproved-region.yaml) | No OOB rule alerts when environments are provisioned outside approved data residency regions or copied/moved | `PowerPlatformAdminActivity` | T1578.002, T1537 | ISM-1585, ISM-0407 |
 | [pp-admin-role-self-elevation-or-change.yaml](analytics-rules/power-platform-admin/pp-admin-role-self-elevation-or-change.yaml) | OOB Entra role rule misses tenant admins self-elevating via `ApplyAdminRole` and Dataverse `System Administrator` grants | `PowerPlatformAdminActivity`, `DataverseActivity` | T1098, T1078 | ISM-0445, ISM-1175, ISM-1228 |
 | [pp-admin-sensitive-env-high-risk-connector.yaml](analytics-rules/power-platform-admin/pp-admin-sensitive-env-high-risk-connector.yaml) | OOB connector rule is Low severity and treats all connectors equally; this highlights high-risk HTTP, file-transfer and consumer connectors | `PowerPlatformAdminActivity` | T1059, T1567 | ISM-0263, ISM-1585 |
+| [dv-guest-export-or-bulk-read.yaml](analytics-rules/power-automate-dataverse/dv-guest-export-or-bulk-read.yaml) | OOB export baseline rule can miss brand-new guest accounts with no 14-day history | `DataverseActivity` | T1567, T1213 | ISM-0263, ISM-0585 |
+| [dv-bulk-record-deletion-or-purge.yaml](analytics-rules/power-automate-dataverse/dv-bulk-record-deletion-or-purge.yaml) | Adds maintenance-account allow-list over BulkDelete, DeleteAuditData and high-volume Delete activity | `DataverseActivity` | T1485, T1070 | ISM-0585, ISM-1511 |
+| [dv-audit-settings-disabled-or-weakened.yaml](analytics-rules/power-automate-dataverse/dv-audit-settings-disabled-or-weakened.yaml) | Explicitly detects disabling of read auditing, user access logging and SAS Purview logging in addition to global auditing | `DataverseActivity` | T1562.001, T1562.008 | ISM-0580, ISM-1228 |
+| [dv-copilot-agent-no-authentication.yaml](analytics-rules/power-automate-dataverse/dv-copilot-agent-no-authentication.yaml) | Mitigates Microsoft's Copilot Studio admin Sentinel logging gap by watching Dataverse `bot` table `authenticationmode` | `DataverseActivity` | T1190, T1562.001 | ISM-0407, ISM-1585 |
+| [pa-flow-personal-or-http-connectors.yaml](analytics-rules/power-automate-dataverse/pa-flow-personal-or-http-connectors.yaml) | OOB Power Automate rules do not flag flows built with personal email, file-storage or raw HTTP connectors | `PowerAutomateActivity` | T1567, T1048 | ISM-0263, ISM-1585 |
+| [pa-flow-created-after-risky-signin.yaml](analytics-rules/power-automate-dataverse/pa-flow-created-after-risky-signin.yaml) | Correlates Entra ID Protection risky sign-ins with immediate flow creation or edits | `PowerAutomateActivity`, `SigninLogs` | T1078, T1567 | ISM-0585, ISM-1228 |
+| [pa-flow-shared-with-guest-or-external.yaml](analytics-rules/power-automate-dataverse/pa-flow-shared-with-guest-or-external.yaml) | Flags flows shared with guests or external domains, distinguishing Owner versus Run-only grants | `PowerAutomateActivity` | T1098 | ISM-0407, ISM-1585 |
+
+## Hunting queries and tuning
+
+- Six proactive hunting queries for Dataverse exports, TDS/Web API bulk reads, application user spikes, unapproved flow connectors, rare maker IPs and broad canvas app sharing live in [sentinel/hunting-queries/power-automate-dataverse/](hunting-queries/power-automate-dataverse/).
+- Noise tuning guidance lives in [sentinel/analytics-rules/power-automate-dataverse/TUNING.md](analytics-rules/power-automate-dataverse/TUNING.md).
 
 ## Validation and tests
 

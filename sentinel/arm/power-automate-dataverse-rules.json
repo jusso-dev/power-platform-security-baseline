@@ -1,0 +1,474 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "Microsoft Sentinel scheduled analytics rules for power-automate-dataverse.",
+    "author": "power-platform-security-baseline"
+  },
+  "parameters": {
+    "workspaceName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the Microsoft Sentinel Log Analytics workspace."
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2023-11-01",
+      "name": "[concat(parameters('workspaceName'), '/Microsoft.SecurityInsights/8c2e4f1a-7b9d-4c3e-8a10-2d5f7b9e3a03')]",
+      "kind": "Scheduled",
+      "properties": {
+        "displayName": "Dataverse - Global, read or user-access audit settings disabled",
+        "description": "Detects any modification to the Dataverse organization entity that disables global auditing (isauditenabled), user access auditing (isuseraccessauditenabled) or read auditing (isreadauditenabled).\nExtends the out-of-the-box audit disabled rule to explicitly cover read-log and user-access-log weakening across production environments.\nMaps to ASD ISM controls ISM-0580 and ISM-1228.",
+        "severity": "High",
+        "enabled": true,
+        "query": "let audit_flags = dynamic([\n    \"isauditenabled\",\n    \"isuseraccessauditenabled\",\n    \"isreadauditenabled\",\n    \"isenablesaslogginginpurview\"\n]);\nDataverseActivity\n| where TimeGenerated > ago(1h)\n| where EntityName == \"organization\" and Message == \"Update\"\n| mv-expand Field = Fields\n| extend\n    FieldName = tolower(tostring(Field.Name)),\n    FieldValue = tolower(tostring(Field.Value))\n| where FieldName in (audit_flags) and FieldValue in (\"false\", \"0\")\n| extend\n    AccountName = tostring(split(UserId, \"@\")[0]),\n    UPNSuffix = tostring(split(UserId, \"@\")[1]),\n    ISMControls = \"ISM-0580, ISM-1228\"\n| project\n    TimeGenerated,\n    UserId,\n    AccountName,\n    UPNSuffix,\n    ClientIp,\n    InstanceUrl,\n    DisabledSetting = FieldName,\n    NewValue = FieldValue,\n    ISMControls",
+        "queryFrequency": "PT1H",
+        "queryPeriod": "PT1H",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT5H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "DefenseEvasion"
+        ],
+        "techniques": [
+          "T1562.001",
+          "T1562.008"
+        ],
+        "entityMappings": [
+          {
+            "entityType": "Account",
+            "fieldMappings": [
+              {
+                "identifier": "Name",
+                "columnName": "AccountName"
+              },
+              {
+                "identifier": "UPNSuffix",
+                "columnName": "UPNSuffix"
+              }
+            ]
+          },
+          {
+            "entityType": "IP",
+            "fieldMappings": [
+              {
+                "identifier": "Address",
+                "columnName": "ClientIp"
+              }
+            ]
+          }
+        ],
+        "incidentConfiguration": {
+          "createIncident": true,
+          "groupingConfiguration": {
+            "enabled": false,
+            "reopenClosedIncident": false,
+            "lookbackDuration": "PT5H",
+            "matchingMethod": "AllEntities"
+          }
+        },
+        "customDetails": {
+          "InstanceUrl": "InstanceUrl",
+          "DisabledSetting": "DisabledSetting",
+          "ISMControls": "ISMControls"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2023-11-01",
+      "name": "[concat(parameters('workspaceName'), '/Microsoft.SecurityInsights/8c2e4f1a-7b9d-4c3e-8a10-2d5f7b9e3a02')]",
+      "kind": "Scheduled",
+      "properties": {
+        "displayName": "Dataverse - Bulk record deletion or audit log purge",
+        "description": "Detects bulk record deletion jobs (BulkDelete), audit partition deletion (DeleteAuditData) or high-volume individual Delete operations in Dataverse outside approved maintenance accounts.\nMaps to ASD ISM controls ISM-0585 and ISM-1511.",
+        "severity": "High",
+        "enabled": true,
+        "query": "// Exclude scheduled archiving service principals once validated\nlet maintenance_accounts = dynamic([\n    \"svc-dataverse-archive@yourdomain.gov.au\"\n]);\nlet delete_threshold = 100;\nDataverseActivity\n| where TimeGenerated > ago(1h)\n| where Message in (\"BulkDelete\", \"DeleteAuditData\", \"Delete\")\n| where UserId !in~ (maintenance_accounts)\n| summarize\n    DeleteCount = count(),\n    Entities = make_set(EntityName, 50),\n    FirstSeen = min(TimeGenerated),\n    LastSeen = max(TimeGenerated)\n    by UserId, ClientIp, InstanceUrl, Message\n| where Message in (\"BulkDelete\", \"DeleteAuditData\") or DeleteCount >= delete_threshold\n| extend\n    AccountName = tostring(split(UserId, \"@\")[0]),\n    UPNSuffix = tostring(split(UserId, \"@\")[1]),\n    ISMControls = \"ISM-0585, ISM-1511\"\n| project\n    FirstSeen,\n    LastSeen,\n    UserId,\n    AccountName,\n    UPNSuffix,\n    ClientIp,\n    InstanceUrl,\n    Message,\n    DeleteCount,\n    Entities,\n    ISMControls",
+        "queryFrequency": "PT1H",
+        "queryPeriod": "PT1H",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT5H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "Impact",
+          "DefenseEvasion"
+        ],
+        "techniques": [
+          "T1485",
+          "T1070"
+        ],
+        "entityMappings": [
+          {
+            "entityType": "Account",
+            "fieldMappings": [
+              {
+                "identifier": "Name",
+                "columnName": "AccountName"
+              },
+              {
+                "identifier": "UPNSuffix",
+                "columnName": "UPNSuffix"
+              }
+            ]
+          },
+          {
+            "entityType": "IP",
+            "fieldMappings": [
+              {
+                "identifier": "Address",
+                "columnName": "ClientIp"
+              }
+            ]
+          }
+        ],
+        "incidentConfiguration": {
+          "createIncident": true,
+          "groupingConfiguration": {
+            "enabled": false,
+            "reopenClosedIncident": false,
+            "lookbackDuration": "PT5H",
+            "matchingMethod": "AllEntities"
+          }
+        },
+        "customDetails": {
+          "InstanceUrl": "InstanceUrl",
+          "Message": "Message",
+          "DeleteCount": "DeleteCount",
+          "ISMControls": "ISMControls"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2023-11-01",
+      "name": "[concat(parameters('workspaceName'), '/Microsoft.SecurityInsights/8c2e4f1a-7b9d-4c3e-8a10-2d5f7b9e3a04')]",
+      "kind": "Scheduled",
+      "properties": {
+        "displayName": "Copilot Studio - Agent created or modified to No authentication",
+        "description": "Detects a Copilot Studio agent (Dataverse bot table) created or updated with authenticationmode set to 1 (No authentication).\nCloses Microsoft's Sentinel logging gap for Copilot Studio admin/maker Purview events by monitoring Dataverse bot table auditing directly.\nVerify the authenticationmode picklist integer in your environment and enforce PP-CS-002 DLP blocking as primary prevention.\nMaps to ASD ISM controls ISM-0407 and ISM-1585.",
+        "severity": "High",
+        "enabled": true,
+        "query": "// Prerequisite: enable Dataverse auditing on the 'bot' table in agent environments (PP-CS-009)\nDataverseActivity\n| where TimeGenerated > ago(1h)\n| where EntityName == \"bot\" and Message in (\"Create\", \"Update\")\n| mv-expand Field = Fields\n| where tolower(tostring(Field.Name)) == \"authenticationmode\"\n| extend AuthMode = tostring(Field.Value)\n| where AuthMode in (\"1\", \"None\")\n| extend\n    AccountName = tostring(split(UserId, \"@\")[0]),\n    UPNSuffix = tostring(split(UserId, \"@\")[1]),\n    ISMControls = \"ISM-0407, ISM-1585\"\n| project\n    TimeGenerated,\n    UserId,\n    AccountName,\n    UPNSuffix,\n    ClientIp,\n    InstanceUrl,\n    BotId = tostring(EntityId),\n    Message,\n    AuthMode,\n    ISMControls",
+        "queryFrequency": "PT1H",
+        "queryPeriod": "PT1H",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT5H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "InitialAccess",
+          "DefenseEvasion"
+        ],
+        "techniques": [
+          "T1190",
+          "T1562.001"
+        ],
+        "entityMappings": [
+          {
+            "entityType": "Account",
+            "fieldMappings": [
+              {
+                "identifier": "Name",
+                "columnName": "AccountName"
+              },
+              {
+                "identifier": "UPNSuffix",
+                "columnName": "UPNSuffix"
+              }
+            ]
+          },
+          {
+            "entityType": "IP",
+            "fieldMappings": [
+              {
+                "identifier": "Address",
+                "columnName": "ClientIp"
+              }
+            ]
+          }
+        ],
+        "incidentConfiguration": {
+          "createIncident": true,
+          "groupingConfiguration": {
+            "enabled": false,
+            "reopenClosedIncident": false,
+            "lookbackDuration": "PT5H",
+            "matchingMethod": "AllEntities"
+          }
+        },
+        "customDetails": {
+          "InstanceUrl": "InstanceUrl",
+          "BotId": "BotId",
+          "AuthMode": "AuthMode",
+          "ISMControls": "ISMControls"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2023-11-01",
+      "name": "[concat(parameters('workspaceName'), '/Microsoft.SecurityInsights/8c2e4f1a-7b9d-4c3e-8a10-2d5f7b9e3a01')]",
+      "kind": "Scheduled",
+      "properties": {
+        "displayName": "Dataverse - Mass export or bulk retrieval by guest user",
+        "description": "Detects Dataverse ExportToExcel or high-volume RetrieveMultiple activity performed by an external guest account.\nCloses a gap in the out-of-the-box per-user baseline export rule where newly invited guest accounts have no 14-day history and can export moderate volumes without tripping anomaly thresholds.\nRequires Dataverse Read logs for the RetrieveMultiple branch. Maps to ASD ISM controls ISM-0263 and ISM-0585.",
+        "severity": "High",
+        "enabled": true,
+        "query": "// Tune retrieve_threshold for environments with Read logs enabled\nlet retrieve_threshold = 500;\nDataverseActivity\n| where TimeGenerated > ago(1h)\n| where Message in (\"ExportToExcel\", \"ExportPdfDocument\", \"ExportWordDocument\", \"RetrieveMultiple\")\n| where UserId has \"#EXT#\"\n| summarize\n    Events = count(),\n    Entities = make_set(EntityName, 50),\n    FirstSeen = min(TimeGenerated),\n    LastSeen = max(TimeGenerated)\n    by UserId, ClientIp, InstanceUrl, Message\n| where Message != \"RetrieveMultiple\" or Events > retrieve_threshold\n| extend\n    AccountName = tostring(split(UserId, \"@\")[0]),\n    UPNSuffix = tostring(split(UserId, \"@\")[1]),\n    ISMControls = \"ISM-0263, ISM-0585\"\n| project\n    FirstSeen,\n    LastSeen,\n    UserId,\n    AccountName,\n    UPNSuffix,\n    ClientIp,\n    InstanceUrl,\n    Message,\n    Events,\n    Entities,\n    ISMControls",
+        "queryFrequency": "PT1H",
+        "queryPeriod": "PT1H",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT5H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "Exfiltration",
+          "Collection"
+        ],
+        "techniques": [
+          "T1567",
+          "T1213"
+        ],
+        "entityMappings": [
+          {
+            "entityType": "Account",
+            "fieldMappings": [
+              {
+                "identifier": "Name",
+                "columnName": "AccountName"
+              },
+              {
+                "identifier": "UPNSuffix",
+                "columnName": "UPNSuffix"
+              }
+            ]
+          },
+          {
+            "entityType": "IP",
+            "fieldMappings": [
+              {
+                "identifier": "Address",
+                "columnName": "ClientIp"
+              }
+            ]
+          }
+        ],
+        "incidentConfiguration": {
+          "createIncident": true,
+          "groupingConfiguration": {
+            "enabled": false,
+            "reopenClosedIncident": false,
+            "lookbackDuration": "PT5H",
+            "matchingMethod": "AllEntities"
+          }
+        },
+        "customDetails": {
+          "InstanceUrl": "InstanceUrl",
+          "Message": "Message",
+          "Events": "Events",
+          "ISMControls": "ISMControls"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2023-11-01",
+      "name": "[concat(parameters('workspaceName'), '/Microsoft.SecurityInsights/8c2e4f1a-7b9d-4c3e-8a10-2d5f7b9e3a06')]",
+      "kind": "Scheduled",
+      "properties": {
+        "displayName": "Power Automate - Flow created or edited following risky Microsoft Entra sign-in",
+        "description": "Correlates Microsoft Entra ID Protection medium/high risk sign-ins with subsequent Power Automate flow creation or modification by the same user within 24 hours.\nDetects compromised accounts establishing automated email forwarding or cloud data exfiltration workflows.\nRequires Microsoft Entra ID P2 for risk fields. Maps to ASD ISM controls ISM-0585 and ISM-1228.",
+        "severity": "High",
+        "enabled": true,
+        "query": "let risky_users = SigninLogs\n    | where TimeGenerated > ago(1d)\n    | where RiskLevelDuringSignIn in (\"medium\", \"high\") or RiskState == \"atRisk\"\n    | summarize\n        RiskySignInTime = max(TimeGenerated),\n        RiskLevels = make_set(RiskLevelDuringSignIn, 5),\n        RiskyIPs = make_set(IPAddress, 10)\n        by UserPrincipalName = tolower(UserPrincipalName);\nPowerAutomateActivity\n| where TimeGenerated > ago(1h)\n| where EventOriginalType in (\"CreateFlow\", \"EditFlow\")\n| extend UserPrincipalName = tolower(ActorName)\n| join kind=inner risky_users on UserPrincipalName\n| where TimeGenerated >= RiskySignInTime\n| extend\n    AccountName = tostring(split(ActorName, \"@\")[0]),\n    UPNSuffix = tostring(split(ActorName, \"@\")[1]),\n    ISMControls = \"ISM-0585, ISM-1228\"\n| project\n    TimeGenerated,\n    ActorName,\n    AccountName,\n    UPNSuffix,\n    SrcIpAddr,\n    EventOriginalType,\n    FlowConnectorNames,\n    FlowDetailsUrl,\n    RiskySignInTime,\n    RiskLevels,\n    RiskyIPs,\n    ISMControls",
+        "queryFrequency": "PT1H",
+        "queryPeriod": "P1D",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT5H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "InitialAccess",
+          "Exfiltration"
+        ],
+        "techniques": [
+          "T1078",
+          "T1567"
+        ],
+        "entityMappings": [
+          {
+            "entityType": "Account",
+            "fieldMappings": [
+              {
+                "identifier": "Name",
+                "columnName": "AccountName"
+              },
+              {
+                "identifier": "UPNSuffix",
+                "columnName": "UPNSuffix"
+              }
+            ]
+          },
+          {
+            "entityType": "IP",
+            "fieldMappings": [
+              {
+                "identifier": "Address",
+                "columnName": "SrcIpAddr"
+              }
+            ]
+          }
+        ],
+        "incidentConfiguration": {
+          "createIncident": true,
+          "groupingConfiguration": {
+            "enabled": false,
+            "reopenClosedIncident": false,
+            "lookbackDuration": "PT5H",
+            "matchingMethod": "AllEntities"
+          }
+        },
+        "customDetails": {
+          "EventOriginalType": "EventOriginalType",
+          "FlowConnectorNames": "FlowConnectorNames",
+          "ISMControls": "ISMControls"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2023-11-01",
+      "name": "[concat(parameters('workspaceName'), '/Microsoft.SecurityInsights/8c2e4f1a-7b9d-4c3e-8a10-2d5f7b9e3a05')]",
+      "kind": "Scheduled",
+      "properties": {
+        "displayName": "Power Automate - Flow created or edited with personal or external HTTP connectors",
+        "description": "Detects Power Automate flows created or edited using consumer email, external file storage, messaging or raw HTTP connectors that can exfiltrate organisational data.\nActs as a detective backstop to tenant DLP policy PP-TEN-006.\nMaps to ASD ISM controls ISM-0263 and ISM-1585.",
+        "severity": "Medium",
+        "enabled": true,
+        "query": "// Validate exact connector display names in your tenant:\n// PowerAutomateActivity | where isnotempty(FlowConnectorNames) | distinct FlowConnectorNames\nlet risky_connectors = dynamic([\n    \"Outlook.com\",\n    \"Gmail\",\n    \"Google Drive\",\n    \"Dropbox\",\n    \"Box\",\n    \"HTTP\",\n    \"FTP\",\n    \"SFTP\",\n    \"Telegram\",\n    \"Slack\"\n]);\nlet approved_integration_envs = dynamic([\n    \"00000000-0000-0000-0000-000000000250\"\n]);\nPowerAutomateActivity\n| where TimeGenerated > ago(1h)\n| where EventOriginalType in (\"CreateFlow\", \"EditFlow\")\n| where FlowConnectorNames has_any (risky_connectors)\n| extend EnvironmentId = tostring(split(parse_url(FlowDetailsUrl).Path, \"/\")[2])\n| where EnvironmentId !in~ (approved_integration_envs)\n| extend\n    AccountName = tostring(split(ActorName, \"@\")[0]),\n    UPNSuffix = tostring(split(ActorName, \"@\")[1]),\n    ISMControls = \"ISM-0263, ISM-1585\"\n| project\n    TimeGenerated,\n    ActorName,\n    AccountName,\n    UPNSuffix,\n    SrcIpAddr,\n    EventOriginalType,\n    FlowConnectorNames,\n    FlowDetailsUrl,\n    EnvironmentId,\n    ISMControls",
+        "queryFrequency": "PT1H",
+        "queryPeriod": "PT1H",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT5H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "Exfiltration"
+        ],
+        "techniques": [
+          "T1567",
+          "T1048"
+        ],
+        "entityMappings": [
+          {
+            "entityType": "Account",
+            "fieldMappings": [
+              {
+                "identifier": "Name",
+                "columnName": "AccountName"
+              },
+              {
+                "identifier": "UPNSuffix",
+                "columnName": "UPNSuffix"
+              }
+            ]
+          },
+          {
+            "entityType": "IP",
+            "fieldMappings": [
+              {
+                "identifier": "Address",
+                "columnName": "SrcIpAddr"
+              }
+            ]
+          }
+        ],
+        "incidentConfiguration": {
+          "createIncident": true,
+          "groupingConfiguration": {
+            "enabled": false,
+            "reopenClosedIncident": false,
+            "lookbackDuration": "PT5H",
+            "matchingMethod": "AllEntities"
+          }
+        },
+        "customDetails": {
+          "EventOriginalType": "EventOriginalType",
+          "FlowConnectorNames": "FlowConnectorNames",
+          "EnvironmentId": "EnvironmentId",
+          "ISMControls": "ISMControls"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2023-11-01",
+      "name": "[concat(parameters('workspaceName'), '/Microsoft.SecurityInsights/8c2e4f1a-7b9d-4c3e-8a10-2d5f7b9e3a07')]",
+      "kind": "Scheduled",
+      "properties": {
+        "displayName": "Power Automate - Flow shared with guest or external domain",
+        "description": "Detects Power Automate flows shared with guest accounts (#EXT#) or recipients outside the organisation's approved internal domains.\nExternal Owner grants (SharingPermission == 3) allow external users to inspect connection references and modify flow logic.\nMaps to ASD ISM controls ISM-0407 and ISM-1585.",
+        "severity": "Medium",
+        "enabled": true,
+        "query": "// Replace with your organisation's verified Microsoft Entra domains\nlet internal_domains = dynamic([\n    \"yourdomain.gov.au\"\n]);\nPowerAutomateActivity\n| where TimeGenerated > ago(1h)\n| where isnotempty(RecipientUpn)\n| extend RecipientDomain = tolower(tostring(split(RecipientUpn, \"@\")[1]))\n| where RecipientUpn has \"#EXT#\" or RecipientDomain !in (internal_domains)\n| extend\n    Permission = case(\n        tostring(SharingPermission) == \"3\", \"Owner\",\n        tostring(SharingPermission) == \"2\", \"Run-only\",\n        tostring(SharingPermission)\n    ),\n    AccountName = tostring(split(ActorName, \"@\")[0]),\n    UPNSuffix = tostring(split(ActorName, \"@\")[1]),\n    ISMControls = \"ISM-0407, ISM-1585\"\n| project\n    TimeGenerated,\n    ActorName,\n    AccountName,\n    UPNSuffix,\n    SrcIpAddr,\n    EventOriginalType,\n    RecipientUpn,\n    Permission,\n    FlowDetailsUrl,\n    ISMControls",
+        "queryFrequency": "PT1H",
+        "queryPeriod": "PT1H",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT5H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "Persistence",
+          "LateralMovement"
+        ],
+        "techniques": [
+          "T1098"
+        ],
+        "entityMappings": [
+          {
+            "entityType": "Account",
+            "fieldMappings": [
+              {
+                "identifier": "Name",
+                "columnName": "AccountName"
+              },
+              {
+                "identifier": "UPNSuffix",
+                "columnName": "UPNSuffix"
+              }
+            ]
+          },
+          {
+            "entityType": "IP",
+            "fieldMappings": [
+              {
+                "identifier": "Address",
+                "columnName": "SrcIpAddr"
+              }
+            ]
+          }
+        ],
+        "incidentConfiguration": {
+          "createIncident": true,
+          "groupingConfiguration": {
+            "enabled": false,
+            "reopenClosedIncident": false,
+            "lookbackDuration": "PT5H",
+            "matchingMethod": "AllEntities"
+          }
+        },
+        "customDetails": {
+          "RecipientUpn": "RecipientUpn",
+          "Permission": "Permission",
+          "ISMControls": "ISMControls"
+        }
+      }
+    }
+  ]
+}

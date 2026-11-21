@@ -1,0 +1,70 @@
+id: 8c2e4f1a-7b9d-4c3e-8a10-2d5f7b9e3a01
+name: Dataverse - Mass export or bulk retrieval by guest user
+description: |
+  Detects Dataverse ExportToExcel or high-volume RetrieveMultiple activity performed by an external guest account.
+  Closes a gap in the out-of-the-box per-user baseline export rule where newly invited guest accounts have no 14-day history and can export moderate volumes without tripping anomaly thresholds.
+  Requires Dataverse Read logs for the RetrieveMultiple branch. Maps to ASD ISM controls ISM-0263 and ISM-0585.
+severity: High
+status: Available
+requiredDataConnectors:
+  - connectorId: Dataverse
+    dataTypes:
+      - DataverseActivity
+queryFrequency: 1h
+queryPeriod: 1h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - Exfiltration
+  - Collection
+relevantTechniques:
+  - T1567
+  - T1213
+query: |
+  // Tune retrieve_threshold for environments with Read logs enabled
+  let retrieve_threshold = 500;
+  DataverseActivity
+  | where TimeGenerated > ago(1h)
+  | where Message in ("ExportToExcel", "ExportPdfDocument", "ExportWordDocument", "RetrieveMultiple")
+  | where UserId has "#EXT#"
+  | summarize
+      Events = count(),
+      Entities = make_set(EntityName, 50),
+      FirstSeen = min(TimeGenerated),
+      LastSeen = max(TimeGenerated)
+      by UserId, ClientIp, InstanceUrl, Message
+  | where Message != "RetrieveMultiple" or Events > retrieve_threshold
+  | extend
+      AccountName = tostring(split(UserId, "@")[0]),
+      UPNSuffix = tostring(split(UserId, "@")[1]),
+      ISMControls = "ISM-0263, ISM-0585"
+  | project
+      FirstSeen,
+      LastSeen,
+      UserId,
+      AccountName,
+      UPNSuffix,
+      ClientIp,
+      InstanceUrl,
+      Message,
+      Events,
+      Entities,
+      ISMControls
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountName
+      - identifier: UPNSuffix
+        columnName: UPNSuffix
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: ClientIp
+customDetails:
+  InstanceUrl: InstanceUrl
+  Message: Message
+  Events: Events
+  ISMControls: ISMControls
+version: 1.0.0
+kind: Scheduled

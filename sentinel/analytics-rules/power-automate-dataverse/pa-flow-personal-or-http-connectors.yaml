@@ -1,0 +1,78 @@
+id: 8c2e4f1a-7b9d-4c3e-8a10-2d5f7b9e3a05
+name: Power Automate - Flow created or edited with personal or external HTTP connectors
+description: |
+  Detects Power Automate flows created or edited using consumer email, external file storage, messaging or raw HTTP connectors that can exfiltrate organisational data.
+  Acts as a detective backstop to tenant DLP policy PP-TEN-006.
+  Maps to ASD ISM controls ISM-0263 and ISM-1585.
+severity: Medium
+status: Available
+requiredDataConnectors:
+  - connectorId: PowerAutomate
+    dataTypes:
+      - PowerAutomateActivity
+queryFrequency: 1h
+queryPeriod: 1h
+triggerOperator: gt
+triggerThreshold: 0
+tactics:
+  - Exfiltration
+relevantTechniques:
+  - T1567
+  - T1048
+query: |
+  // Validate exact connector display names in your tenant:
+  // PowerAutomateActivity | where isnotempty(FlowConnectorNames) | distinct FlowConnectorNames
+  let risky_connectors = dynamic([
+      "Outlook.com",
+      "Gmail",
+      "Google Drive",
+      "Dropbox",
+      "Box",
+      "HTTP",
+      "FTP",
+      "SFTP",
+      "Telegram",
+      "Slack"
+  ]);
+  let approved_integration_envs = dynamic([
+      "00000000-0000-0000-0000-000000000250"
+  ]);
+  PowerAutomateActivity
+  | where TimeGenerated > ago(1h)
+  | where EventOriginalType in ("CreateFlow", "EditFlow")
+  | where FlowConnectorNames has_any (risky_connectors)
+  | extend EnvironmentId = tostring(split(parse_url(FlowDetailsUrl).Path, "/")[2])
+  | where EnvironmentId !in~ (approved_integration_envs)
+  | extend
+      AccountName = tostring(split(ActorName, "@")[0]),
+      UPNSuffix = tostring(split(ActorName, "@")[1]),
+      ISMControls = "ISM-0263, ISM-1585"
+  | project
+      TimeGenerated,
+      ActorName,
+      AccountName,
+      UPNSuffix,
+      SrcIpAddr,
+      EventOriginalType,
+      FlowConnectorNames,
+      FlowDetailsUrl,
+      EnvironmentId,
+      ISMControls
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: Name
+        columnName: AccountName
+      - identifier: UPNSuffix
+        columnName: UPNSuffix
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: SrcIpAddr
+customDetails:
+  EventOriginalType: EventOriginalType
+  FlowConnectorNames: FlowConnectorNames
+  EnvironmentId: EnvironmentId
+  ISMControls: ISMControls
+version: 1.0.0
+kind: Scheduled

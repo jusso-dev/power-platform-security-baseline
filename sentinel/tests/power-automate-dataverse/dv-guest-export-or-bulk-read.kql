@@ -1,0 +1,20 @@
+// Synthetic KQL datatable test for: dv-guest-export-or-bulk-read.yaml
+// Expected result: 1 row (guest ExportToExcel); internal user export filtered out.
+let retrieve_threshold = 500;
+let DataverseActivity = datatable(
+    TimeGenerated: datetime,
+    UserId: string,
+    ClientIp: string,
+    InstanceUrl: string,
+    Message: string,
+    EntityName: string
+) [
+    ago(10m), "external_partner.com#EXT#@yourdomain.onmicrosoft.com", "203.0.113.60", "https://org0001.crm6.dynamics.com", "ExportToExcel", "contact",
+    ago(12m), "analyst@yourdomain.gov.au", "198.51.100.10", "https://org0001.crm6.dynamics.com", "ExportToExcel", "contact"
+];
+DataverseActivity
+| where TimeGenerated > ago(1h)
+| where Message in ("ExportToExcel", "ExportPdfDocument", "ExportWordDocument", "RetrieveMultiple")
+| where UserId has "#EXT#"
+| summarize Events = count(), Entities = make_set(EntityName, 50) by UserId, ClientIp, InstanceUrl, Message
+| where Message != "RetrieveMultiple" or Events > retrieve_threshold

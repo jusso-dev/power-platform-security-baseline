@@ -14,13 +14,21 @@ Power Platform and Copilot Studio hold business data, connectors and automation,
 
 Research input from 21 Nov 2026 is in `docs/research/pp-sentinel-research.tsx`. Treat it as a starting point and re-verify every claim against Microsoft Learn before it lands in the baseline.
 
+## Architecture
+
+See [docs/architecture.md](docs/architecture.md) for Mermaid diagrams showing:
+
+- Power Platform, Dataverse and Copilot Studio telemetry flow into Microsoft Sentinel (Defender portal)
+- How the read-only Python assessor authenticates and reads settings via GET-only APIs
+- Managed Identity Logic Apps incident response playbook flow
+
 ## Layout
 
 ```text
 baseline/        Baseline items, one Markdown file per setting
 assessor/        Read-only assessor (code, tests)
-sentinel/        Analytics rules, hunting queries, workbook, playbooks (ARM/Bicep)
-docs/            Guides, research input, architecture diagrams
+sentinel/        Analytics rules, hunting queries, workbook, playbooks (ARM)
+docs/            Guides, ADRs, research verification, architecture diagrams
 ```
 
 ## Related projects

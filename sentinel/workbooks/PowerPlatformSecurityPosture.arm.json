@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "Deploys the Power Platform Security Posture Microsoft Sentinel workbook.",
+    "author": "power-platform-security-baseline"
+  },
+  "parameters": {
+    "workbookDisplayName": {
+      "type": "string",
+      "defaultValue": "Power Platform Security Posture",
+      "metadata": {
+        "description": "Display name for the Microsoft Sentinel workbook."
+      }
+    },
+    "workbookSourceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Full Azure Resource ID of the Microsoft Sentinel Log Analytics workspace."
+      }
+    },
+    "workbookId": {
+      "type": "string",
+      "defaultValue": "[guid(parameters('workbookSourceId'), parameters('workbookDisplayName'))]",
+      "metadata": {
+        "description": "Unique GUID for the workbook resource."
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Insights/workbooks",
+      "apiVersion": "2022-04-01",
+      "name": "[parameters('workbookId')]",
+      "location": "[resourceGroup().location]",
+      "kind": "shared",
+      "properties": {
+        "displayName": "[parameters('workbookDisplayName')]",
+        "serializedData": "{\"version\": \"Notebook/1.0\", \"items\": [{\"type\": 1, \"content\": {\"json\": \"# Power Platform Security Posture\\n\\nOperational security posture workbook for Microsoft Power Platform, Power Automate, Dataverse and Copilot Studio. Covers admin activity, DLP policy changes, risky makers, connector usage, Dataverse exports and optional read-only baseline assessor results (`PowerPlatformBaselineAssessor_CL`).\\n\\n> Built for Microsoft Sentinel in the Microsoft Defender portal (Azure portal retirement: 31 March 2027) using current tables from Microsoft Business Applications 3.2.5+ and Microsoft Copilot 3.0.2+.\"}, \"name\": \"header-markdown\"}, {\"type\": 9, \"content\": {\"version\": \"KqlParameterItem/1.0\", \"parameters\": [{\"id\": \"11111111-1111-4111-8111-111111111101\", \"version\": \"KqlParameterItem/1.0\", \"name\": \"TimeRange\", \"label\": \"Time range\", \"type\": 4, \"isRequired\": true, \"value\": {\"durationMs\": 604800000}, \"typeSettings\": {\"selectableValues\": [{\"durationMs\": 86400000}, {\"durationMs\": 604800000}, {\"durationMs\": 2592000000}]}}], \"style\": \"pills\", \"queryType\": 0}, \"name\": \"parameters\"}, {\"type\": 3, \"content\": {\"version\": \"KqlItem/1.0\", \"query\": \"union withsource=Table isfuzzy=true PowerPlatformAdminActivity, PowerAutomateActivity, DataverseActivity, CopilotActivity\\n| where TimeGenerated {TimeRange}\\n| summarize Events = count(), LatestEvent = max(TimeGenerated) by Table\\n| order by Events desc\", \"size\": 1, \"title\": \"Telemetry ingestion health across current Power Platform tables\", \"queryType\": 0, \"visualization\": \"table\"}, \"name\": \"ingestion-health\"}, {\"type\": 3, \"content\": {\"version\": \"KqlItem/1.0\", \"query\": \"PowerPlatformAdminActivity\\n| where TimeGenerated {TimeRange}\\n| summarize Events = count(), Actors = dcount(ActorName), LastSeen = max(TimeGenerated) by EventOriginalType\\n| order by Events desc\\n| take 25\", \"size\": 0, \"title\": \"Power Platform administrative operations\", \"queryType\": 0, \"visualization\": \"barchart\"}, \"name\": \"admin-activity\"}, {\"type\": 3, \"content\": {\"version\": \"KqlItem/1.0\", \"query\": \"PowerPlatformAdminActivity\\n| where TimeGenerated {TimeRange}\\n| where EventOriginalType == \\\"GovernanceApiPolicyOperation\\\"\\n| mv-expand PropertyCollection\\n| extend PropName = tostring(PropertyCollection.Name), PropValue = tostring(PropertyCollection.Value)\\n| summarize Props = make_bag(bag_pack(PropName, PropValue)) by TimeGenerated, EventOriginalUid, ActorName\\n| extend Operation = tostring(Props[\\\"powerplatform.analytics.resource.tenant.governance.api_policy.operation_name\\\"]), PolicyName = tostring(Props[\\\"powerplatform.analytics.resource.display_name\\\"]), ActorUpn = coalesce(tostring(Props[\\\"enduser.principal_name\\\"]), ActorName)\\n| where Operation in (\\\"CreateDlpPolicy\\\", \\\"UpdateDlpPolicy\\\", \\\"DeleteDlpPolicy\\\")\\n| project TimeGenerated, ActorUpn, Operation, PolicyName\\n| order by TimeGenerated desc\", \"size\": 0, \"title\": \"Data Loss Prevention (DLP) policy changes\", \"queryType\": 0, \"visualization\": \"table\"}, \"name\": \"dlp-changes\"}, {\"type\": 3, \"content\": {\"version\": \"KqlItem/1.0\", \"query\": \"let risky = SigninLogs\\n    | where TimeGenerated {TimeRange}\\n    | where RiskLevelDuringSignIn in (\\\"medium\\\", \\\"high\\\") or RiskState == \\\"atRisk\\\"\\n    | summarize RiskySignIns = count(), MaxRisk = max(RiskLevelDuringSignIn), LatestRiskySignIn = max(TimeGenerated) by UserPrincipalName = tolower(UserPrincipalName);\\nPowerAutomateActivity\\n| where TimeGenerated {TimeRange}\\n| where EventOriginalType in (\\\"CreateFlow\\\", \\\"EditFlow\\\", \\\"EditFlowPermissions\\\")\\n| extend UserPrincipalName = tolower(ActorName)\\n| join kind=inner risky on UserPrincipalName\\n| summarize FlowOps = count(), Connectors = make_set(FlowConnectorNames, 10), LatestFlowOp = max(TimeGenerated) by ActorName, MaxRisk, RiskySignIns, LatestRiskySignIn\\n| order by FlowOps desc\", \"size\": 0, \"title\": \"Risky makers (Entra risky sign-ins correlated with Power Automate activity)\", \"queryType\": 0, \"visualization\": \"table\"}, \"name\": \"risky-makers\"}, {\"type\": 3, \"content\": {\"version\": \"KqlItem/1.0\", \"query\": \"let watch_connectors = dynamic([\\\"HTTP\\\", \\\"FTP\\\", \\\"SFTP\\\", \\\"Gmail\\\", \\\"Outlook.com\\\", \\\"Dropbox\\\", \\\"Google Drive\\\", \\\"Box\\\", \\\"Slack\\\", \\\"Telegram\\\"]);\\nPowerAutomateActivity\\n| where TimeGenerated {TimeRange}\\n| where EventOriginalType in (\\\"CreateFlow\\\", \\\"EditFlow\\\")\\n| where isnotempty(FlowConnectorNames)\\n| extend HighRisk = iif(FlowConnectorNames has_any (watch_connectors), \\\"HighRisk\\\", \\\"Standard\\\")\\n| summarize FlowEvents = count(), DistinctMakers = dcount(ActorName) by FlowConnectorNames, HighRisk\\n| order by HighRisk asc, FlowEvents desc\\n| take 25\", \"size\": 0, \"title\": \"Power Automate connector usage (high-risk connectors highlighted)\", \"queryType\": 0, \"visualization\": \"table\"}, \"name\": \"connector-usage\"}, {\"type\": 3, \"content\": {\"version\": \"KqlItem/1.0\", \"query\": \"DataverseActivity\\n| where TimeGenerated {TimeRange}\\n| where Message in (\\\"ExportToExcel\\\", \\\"ExportPdfDocument\\\", \\\"ExportWordDocument\\\", \\\"BulkDelete\\\", \\\"DeleteAuditData\\\")\\n| summarize Events = count(), Entities = make_set(EntityName, 20), ClientIPs = make_set(ClientIp, 10), LastSeen = max(TimeGenerated) by UserId, InstanceUrl, Message\\n| order by Events desc\\n| take 50\", \"size\": 0, \"title\": \"Dataverse exports, bulk deletions and audit purges\", \"queryType\": 0, \"visualization\": \"table\"}, \"name\": \"dataverse-exports\"}, {\"type\": 3, \"content\": {\"version\": \"KqlItem/1.0\", \"query\": \"let fallback = datatable(TimeGenerated: datetime, BaselineId_s: string, TargetName_s: string, Severity_s: string, Status_s: string, Title_s: string, IsmControls_s: string)[];\\nunion isfuzzy=true fallback, PowerPlatformBaselineAssessor_CL\\n| where TimeGenerated {TimeRange}\\n| summarize arg_max(TimeGenerated, *) by BaselineId_s, TargetName_s\\n| summarize Count = count() by Status_s, Severity_s\\n| order by Status_s asc\", \"size\": 0, \"title\": \"Baseline assessor results (PowerPlatformBaselineAssessor_CL custom table)\", \"queryType\": 0, \"visualization\": \"barchart\"}, \"name\": \"assessor-results\"}], \"isLocked\": false, \"fallbackResourceIds\": [\"Azure Monitor\"], \"fromTemplateId\": \"sentinel-PowerPlatformSecurityPosture\"}",
+        "version": "1.0",
+        "sourceId": "[parameters('workbookSourceId')]",
+        "category": "sentinel"
+      }
+    }
+  ]
+}

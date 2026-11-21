@@ -39,6 +39,10 @@ Enable Microsoft's out-of-the-box rules in the [Microsoft Business Applications 
 - Six proactive hunting queries for Dataverse exports, TDS/Web API bulk reads, application user spikes, unapproved flow connectors, rare maker IPs and broad canvas app sharing live in [sentinel/hunting-queries/power-automate-dataverse/](hunting-queries/power-automate-dataverse/).
 - Noise tuning guidance lives in [sentinel/analytics-rules/power-automate-dataverse/TUNING.md](analytics-rules/power-automate-dataverse/TUNING.md).
 
+## Workbook
+
+- The Power Platform Security Posture workbook (JSON, deployable ARM template, Deploy to Azure button and synthetic preview screenshot) lives in [sentinel/workbooks/](workbooks/README.md).
+
 ## Validation and tests
 
 - Run `python3 scripts/validate_sentinel.py` to validate YAML rules against Microsoft Sentinel content schemas, check ARM JSON templates, block retired table names and verify every rule has a KQL datatable test.

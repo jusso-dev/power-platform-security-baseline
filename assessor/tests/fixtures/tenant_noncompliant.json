@@ -1,0 +1,65 @@
+{
+  "tenant_id": "00000000-0000-0000-0000-000000000002",
+  "tenant_settings": {
+    "disableEnvironmentCreationByNonAdminUsers": false,
+    "disableTrialEnvironmentCreationByNonAdminUsers": false,
+    "powerPlatform": {
+      "governance": {
+        "enableDefaultEnvironmentRouting": false
+      },
+      "analytics": {
+        "enableTenantLevelAnalytics": false
+      },
+      "powerApps": {
+        "disableShareWithEveryone": false
+      }
+    }
+  },
+  "tenant_isolation": {
+    "properties": {
+      "isDisabled": true,
+      "allowedTenants": []
+    }
+  },
+  "self_service_purchase_policies": [
+    { "productId": "PowerApps", "productName": "Power Apps", "allowSelfServicePurchase": true }
+  ],
+  "dlp_policies": [],
+  "environments": [
+    {
+      "name": "Default-00000000-0000-0000-0000-000000000002",
+      "properties": {
+        "displayName": "Contoso (default)",
+        "isDefault": true,
+        "environmentSku": "Default",
+        "governanceConfiguration": {
+          "protectionLevel": "Basic"
+        }
+      }
+    },
+    {
+      "name": "00000000-0000-0000-0000-000000000202",
+      "properties": {
+        "displayName": "Production Unmanaged",
+        "isDefault": false,
+        "environmentSku": "Production",
+        "governanceConfiguration": {
+          "protectionLevel": "Basic"
+        }
+      }
+    }
+  ],
+  "environment_groups": [],
+  "enterprise_policies": [],
+  "graph_authorization_policy": {
+    "allowInvitesFrom": "everyone"
+  },
+  "privileged_role_assignments": [
+    { "id": "1", "roleDefinitionId": "11648597-926c-4cf3-9c36-bcebb0ba8dcc" },
+    { "id": "2", "roleDefinitionId": "11648597-926c-4cf3-9c36-bcebb0ba8dcc" },
+    { "id": "3", "roleDefinitionId": "11648597-926c-4cf3-9c36-bcebb0ba8dcc" },
+    { "id": "4", "roleDefinitionId": "44367163-eba1-44c3-98af-f5787879f96a" }
+  ],
+  "dataverse_org_settings": {},
+  "copilot_studio_bots": {}
+}

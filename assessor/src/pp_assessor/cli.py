@@ -8,6 +8,7 @@ import sys
 from typing import Sequence
 
 from pp_assessor.auth import MsalAppOnlyTokenProvider, MsalDelegatedTokenProvider
+from pp_assessor.checks import register_tenant_checks
 from pp_assessor.engine import (
     CheckRegistry,
     FixtureDataProvider,
@@ -74,7 +75,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def default_registry() -> CheckRegistry:
     """Return a CheckRegistry populated with all implemented read-only checks."""
-    return CheckRegistry()
+    registry = CheckRegistry()
+    register_tenant_checks(registry)
+    return registry
 
 
 def _build_provider(args: argparse.Namespace) -> ReadOnlyDataProvider:

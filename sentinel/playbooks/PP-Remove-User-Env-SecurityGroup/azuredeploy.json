@@ -1,0 +1,213 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "title": "PP-Remove-User-Env-SecurityGroup",
+    "description": "Removes an affected user from a Power Platform environment's Microsoft Entra security group and revokes their active sign-in sessions via Microsoft Graph using System-Assigned Managed Identity.",
+    "author": "power-platform-security-baseline",
+    "prerequisites": [
+      "Assign Microsoft Sentinel Responder role to the Logic App Managed Identity on the Sentinel workspace resource group.",
+      "Grant Microsoft Graph application permissions User.Read.All, User.RevokeSessions.All and GroupMember.ReadWrite.All (scoped via Administrative Units where supported) to the Logic App Managed Identity."
+    ]
+  },
+  "parameters": {
+    "PlaybookName": {
+      "type": "string",
+      "defaultValue": "PP-Remove-User-Env-SecurityGroup",
+      "metadata": {
+        "description": "Name of the Logic App playbook."
+      }
+    },
+    "EnvironmentSecurityGroupId": {
+      "type": "string",
+      "defaultValue": "00000000-0000-0000-0000-000000000701",
+      "metadata": {
+        "description": "Object ID (GUID) of the Microsoft Entra security group controlling access to the protected Power Platform environment."
+      }
+    }
+  },
+  "variables": {
+    "SentinelConnectionName": "[concat('azuresentinel-', parameters('PlaybookName'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Web/connections",
+      "apiVersion": "2016-06-01",
+      "name": "[variables('SentinelConnectionName')]",
+      "location": "[resourceGroup().location]",
+      "kind": "V1",
+      "properties": {
+        "displayName": "[variables('SentinelConnectionName')]",
+        "customParameterValues": {},
+        "parameterValueType": "Alternative",
+        "api": {
+          "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azuresentinel')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "[parameters('PlaybookName')]",
+      "location": "[resourceGroup().location]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/connections', variables('SentinelConnectionName'))]"
+      ],
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "$connections": {
+              "defaultValue": {},
+              "type": "Object"
+            },
+            "EnvironmentSecurityGroupId": {
+              "defaultValue": "00000000-0000-0000-0000-000000000701",
+              "type": "String"
+            }
+          },
+          "triggers": {
+            "Microsoft_Sentinel_incident": {
+              "type": "ApiConnectionWebhook",
+              "inputs": {
+                "body": {
+                  "callback_url": "@{listCallbackUrl()}"
+                },
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                  }
+                },
+                "path": "/incident-creation"
+              }
+            }
+          },
+          "actions": {
+            "Entities_Get_Accounts": {
+              "type": "ApiConnection",
+              "runAfter": {},
+              "inputs": {
+                "body": "@triggerBody()?['object']?['properties']?['relatedEntities']",
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "path": "/entities/account"
+              }
+            },
+            "For_each_account": {
+              "type": "Foreach",
+              "runAfter": {
+                "Entities_Get_Accounts": [
+                  "Succeeded"
+                ]
+              },
+              "foreach": "@body('Entities_Get_Accounts')?['Accounts']",
+              "actions": {
+                "Resolve_Entra_User": {
+                  "type": "Http",
+                  "runAfter": {},
+                  "inputs": {
+                    "method": "GET",
+                    "uri": "https://graph.microsoft.com/v1.0/users/@{items('For_each_account')?['Name']}@@@{items('For_each_account')?['UPNSuffix']}?$select=id,userPrincipalName",
+                    "authentication": {
+                      "type": "ManagedServiceIdentity",
+                      "audience": "https://graph.microsoft.com"
+                    }
+                  }
+                },
+                "Remove_User_From_Env_Security_Group": {
+                  "type": "Http",
+                  "runAfter": {
+                    "Resolve_Entra_User": [
+                      "Succeeded"
+                    ]
+                  },
+                  "inputs": {
+                    "method": "DELETE",
+                    "uri": "https://graph.microsoft.com/v1.0/groups/@{parameters('EnvironmentSecurityGroupId')}/members/@{body('Resolve_Entra_User')?['id']}/$ref",
+                    "authentication": {
+                      "type": "ManagedServiceIdentity",
+                      "audience": "https://graph.microsoft.com"
+                    }
+                  }
+                },
+                "Revoke_User_SignIn_Sessions": {
+                  "type": "Http",
+                  "runAfter": {
+                    "Remove_User_From_Env_Security_Group": [
+                      "Succeeded",
+                      "Failed"
+                    ]
+                  },
+                  "inputs": {
+                    "method": "POST",
+                    "uri": "https://graph.microsoft.com/v1.0/users/@{body('Resolve_Entra_User')?['id']}/revokeSignInSessions",
+                    "authentication": {
+                      "type": "ManagedServiceIdentity",
+                      "audience": "https://graph.microsoft.com"
+                    }
+                  }
+                },
+                "Comment_Containment_On_Incident": {
+                  "type": "ApiConnection",
+                  "runAfter": {
+                    "Revoke_User_SignIn_Sessions": [
+                      "Succeeded"
+                    ]
+                  },
+                  "inputs": {
+                    "body": {
+                      "incidentArmId": "@triggerBody()?['object']?['id']",
+                      "message": "<p>Playbook <strong>PP-Remove-User-Env-SecurityGroup</strong> removed user <code>@{body('Resolve_Entra_User')?['userPrincipalName']}</code> from environment security group <code>@{parameters('EnvironmentSecurityGroupId')}</code> and revoked active Microsoft Entra sign-in sessions.</p>"
+                    },
+                    "host": {
+                      "connection": {
+                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                      }
+                    },
+                    "method": "post",
+                    "path": "/Incidents/Comment"
+                  }
+                }
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "$connections": {
+            "value": {
+              "azuresentinel": {
+                "connectionId": "[resourceId('Microsoft.Web/connections', variables('SentinelConnectionName'))]",
+                "connectionName": "[variables('SentinelConnectionName')]",
+                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azuresentinel')]",
+                "connectionProperties": {
+                  "authentication": {
+                    "type": "ManagedServiceIdentity"
+                  }
+                }
+              }
+            }
+          },
+          "EnvironmentSecurityGroupId": {
+            "value": "[parameters('EnvironmentSecurityGroupId')]"
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "playbookPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Logic/workflows', parameters('PlaybookName')), '2019-05-01', 'Full').identity.principalId]"
+    }
+  }
+}
